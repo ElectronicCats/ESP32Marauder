@@ -644,8 +644,8 @@ void WiFiScan::startWiFiAttacks(uint8_t scan_mode, uint16_t color, String title_
     display_obj.tft.setTextWrap(false);
     display_obj.tft.setTextColor(TFT_BLACK, color);
     #ifdef HAS_ILI9341
-      display_obj.tft.fillRect(0,16,240,16, color);
-      display_obj.tft.drawCentreString((String)title_string,120,16,2);
+      display_obj.tft.fillRect(0,16,TFT_WIDTH,16, color);
+      display_obj.tft.drawCentreString((String)title_string,TFT_WIDTH / 2,16,2);
       display_obj.touchToExit();
     #endif
     display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -4441,8 +4441,8 @@ void WiFiScan::main(uint32_t currentTime)
           displayString2.concat(" ");
         #ifdef HAS_SCREEN
           display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-          display_obj.showCenterText(displayString2, 160);
-          display_obj.showCenterText(displayString, 160);
+          display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+          display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
         #endif
       }
 
@@ -4530,8 +4530,8 @@ void WiFiScan::main(uint32_t currentTime)
         displayString2.concat(" ");
       #ifdef HAS_SCREEN
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        display_obj.showCenterText(displayString2, 160);
-        display_obj.showCenterText(displayString, 160);
+        display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+        display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
       #endif
       packets_sent = 0;
     }
@@ -4550,8 +4550,8 @@ void WiFiScan::main(uint32_t currentTime)
         displayString2.concat(" ");
       #ifdef HAS_SCREEN
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        display_obj.showCenterText(displayString2, 160);
-        display_obj.showCenterText(displayString, 160);
+        display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+        display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
       #endif
       packets_sent = 0;
     }
@@ -4570,8 +4570,8 @@ void WiFiScan::main(uint32_t currentTime)
         displayString2.concat(" ");
       #ifdef HAS_SCREEN
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        display_obj.showCenterText(displayString2, 160);
-        display_obj.showCenterText(displayString, 160);
+        display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+        display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
       #endif
       packets_sent = 0;
     }
@@ -4603,8 +4603,8 @@ void WiFiScan::main(uint32_t currentTime)
                 displayString2.concat(" ");
               #ifdef HAS_SCREEN
                 display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-                display_obj.showCenterText(displayString2, 160);
-                display_obj.showCenterText(displayString, 160);
+                display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+                display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
               #endif
               packets_sent = 0;
             }
@@ -4640,8 +4640,8 @@ void WiFiScan::main(uint32_t currentTime)
         displayString2.concat(" ");
       #ifdef HAS_SCREEN
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        display_obj.showCenterText(displayString2, 160);
-        display_obj.showCenterText(displayString, 160);
+        display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+        display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
       #endif
       packets_sent = 0;
     }
@@ -4666,8 +4666,8 @@ void WiFiScan::main(uint32_t currentTime)
         displayString2.concat(" ");
       #ifdef HAS_SCREEN
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        display_obj.showCenterText(displayString2, 160);
-        display_obj.showCenterText(displayString, 160);
+        display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+        display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
       #endif
       packets_sent = 0;
     }
@@ -4687,8 +4687,8 @@ void WiFiScan::main(uint32_t currentTime)
         displayString2.concat(" ");
       #ifdef HAS_SCREEN
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        display_obj.showCenterText(displayString2, 160);
-        display_obj.showCenterText(displayString, 160);
+        display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+        display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
       #endif
       packets_sent = 0;
     }
@@ -4729,8 +4729,8 @@ void WiFiScan::main(uint32_t currentTime)
         displayString2.concat(" ");
       #ifdef HAS_SCREEN
         display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        display_obj.showCenterText(displayString2, 160);
-        display_obj.showCenterText(displayString, 160);
+        display_obj.showCenterText(displayString2, TFT_HEIGHT / 2);
+        display_obj.showCenterText(displayString, TFT_HEIGHT / 2);
       #endif
       packets_sent = 0;
     }
