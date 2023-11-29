@@ -20,9 +20,10 @@
   //#define ESP32_LDDB
   //#define MARAUDER_DEV_BOARD_PRO
   //#define XIAO_ESP32_S3
+  #define ESP32_S3
   //// END BOARD TARGETS
 
-  #define MARAUDER_VERSION "v0.13.4"
+  #define MARAUDER_VERSION "v0.13.5"
 
  //// BOARD FEATURES
   #ifdef MARAUDER_M5STICKC
@@ -759,6 +760,13 @@
     #ifdef USE_FLIPPER_SD
       #define XIAO_RX1 1
       #define XIAO_TX1 2
+    #endif
+  #endif
+
+   #ifdef ESP32_S3
+    #ifdef USE_FLIPPER_SD
+      #define XIAO_RX1 18
+      #define XIAO_TX1 17
     #endif
   #endif
   //// END BOARD PIN OVERRIDES

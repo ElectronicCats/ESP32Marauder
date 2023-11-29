@@ -201,10 +201,8 @@ void setup()
   // Starts a second serial channel to stream the captured packets
   #ifdef WRITE_PACKETS_SERIAL
     
-    #ifdef XIAO_ESP32_S3
+    #if defined(XIAO_ESP32_S3) || defined(ESP32_S3)
       Serial1.begin(115200, SERIAL_8N1, XIAO_RX1, XIAO_TX1);
-    #elif ESP32_S3
-      Serial1.begin(115200, SERIAL_8N1, 17, 18);
     #else
       Serial1.begin(115200);
     #endif
