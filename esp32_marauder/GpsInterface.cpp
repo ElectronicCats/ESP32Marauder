@@ -12,7 +12,7 @@ HardwareSerial Serial2(GPS_SERIAL_INDEX);
 
 void GpsInterface::begin() {
 
-  #ifdef MARAUDER_MINI
+  /*#ifdef MARAUDER_MINI
     pinMode(26, OUTPUT);
 
     delay(1);
@@ -22,7 +22,7 @@ void GpsInterface::begin() {
 
     Serial.println("Activated GPS");
     delay(100);
-  #endif
+  #endif*/
 
   
   #ifndef GPS_SOFTWARE_SERIAL
