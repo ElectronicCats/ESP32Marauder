@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - marauder_addon
     tags:
       - "*"
   pull_request:
