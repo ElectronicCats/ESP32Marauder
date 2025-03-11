@@ -12,8 +12,8 @@
   //#define MARAUDER_MINI
   //#define MARAUDER_V4
   //#define MARAUDER_V6
-  //#define MARAUDER_V7
   //#define MARAUDER_V6_1
+  //#define MARAUDER_V7
   //#define MARAUDER_KIT
   //#define GENERIC_ESP32
   //#define MARAUDER_FLIPPER
@@ -183,7 +183,7 @@
   #endif
 
   #ifdef MARAUDER_FLIPPER
-    #define FLIPPER_ZERO_HAT
+    //#define FLIPPER_ZERO_HAT
     //#define HAS_BATTERY
     #define HAS_BT
     //#define HAS_BUTTONS
