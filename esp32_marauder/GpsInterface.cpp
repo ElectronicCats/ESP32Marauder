@@ -31,6 +31,15 @@ void GpsInterface::begin() {
     Serial2.begin(9600, SWSERIAL_8N1, GPS_TX, GPS_RX);
   #endif
 
+    delay(1);
+
+    analogWrite(26, 243);
+    delay(1);
+
+    Serial.println("Activated GPS");
+    delay(100);
+  #endif*/
+
   MicroNMEA::sendSentence(Serial2, "$PSTMSETPAR,1201,0x00000042");
   MicroNMEA::sendSentence(Serial2, "$PSTMSAVEPAR");
 
