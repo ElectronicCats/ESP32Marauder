@@ -185,7 +185,7 @@
   #ifdef MARAUDER_FLIPPER
     //#define FLIPPER_ZERO_HAT
     //#define HAS_BATTERY
-    #define HAS_BT
+    // #define HAS_BT
     //#define HAS_BUTTONS
     //#define HAS_NEOPIXEL_LED
     //#define HAS_PWR_MGMT
@@ -238,10 +238,10 @@
   #endif
 
   #ifdef MARAUDER_ELECTRONICCATS3
-  #define FLIPPER_ZERO_HAT
+  // #define FLIPPER_ZERO_HAT
   //#define HAS_BATTERY
-  #define HAS_BT
-  #define HAS_BT_REMOTE
+  //#define HAS_BT
+  //#define HAS_BT_REMOTE
   //#define HAS_BUTTONS
   //#define HAS_NEOPIXEL_LED
   //#define HAS_PWR_MGMT
@@ -1148,6 +1148,8 @@
   #elif defined(MARAUDER_DEV_BOARD_PRO)
     #define MEM_LOWER_LIM 20000
   #elif defined(XIAO_ESP32_S3)
+    #define MEM_LOWER_LIM 20000
+  #elif defined(MARAUDER_ELECTRONICCATS3)
     #define MEM_LOWER_LIM 20000
   #endif
   //// END MEMORY LOWER LIMIT STUFF
