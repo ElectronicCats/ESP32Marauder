@@ -1,3 +1,0 @@
-Sketches with .pde extension are deprecated, please rename the following files to .ino:
-/home/calvin/EC/ESP32Marauder/esp32_marauder/libraries/LinkedList/examples/ClassList/ClassList.pde
-/home/calvin/EC/ESP32Marauder/esp32_marauder/libraries/LinkedList/examples/SimpleIntegerList/SimpleIntegerList.pde

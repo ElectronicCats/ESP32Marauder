@@ -3,3 +3,28 @@
 .vscode/c_cpp_properties.json
 .vscode/settings.json
 esp32_marauder/.vscode/settings.json
+
+# Build artifacts & logs
+build_output/
+build_temp/
+final_build/
+FINAL_BIN_DIR/
+build_log*.txt
+
+# GPS test build artifacts
+gps_test/bin/
+gps_test/build/
+
+# Arduino CLI binary
+esp32_marauder/bin/arduino-cli
+
+# Compiled binaries in build dirs (C5_Py_Flasher/bins/ is intentional, kept)
+build_output/*.bin
+build_output/*.elf
+build_output/*.map
+build_temp/*.bin
+build_temp/*.elf
+build_temp/*.map
+final_build/*.bin
+final_build/*.elf
+final_build/*.map

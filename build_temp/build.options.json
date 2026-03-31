@@ -1,9 +1,0 @@
-{
-  "additionalFiles": "../../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../..,../../../..,../../../../../../..,../../../../../../../..,../../../../../../../..,../../../../../../../..,../../../../../../../..,../../../../../../..,../../../..,../../../../..,../../../../..,../../../../..,../../../../..,../../../../..,../../../..,../../../..,../../../..,../../../..,../..,../..,../..,../..,../..,../..,../..",
-  "compiler.optimization_flags": "-Os",
-  "customBuildProperties": "",
-  "fqbn": "esp32:esp32:esp32c5:CDCOnBoot=cdc,PSRAM=disabled,PartitionScheme=huge_app",
-  "hardwareFolders": "/home/calvin/.arduino15/packages/esp32/hardware/esp32/3.3.4,/home/calvin/.arduino15/packages/esp32/hardware/esp32/3.3.4",
-  "otherLibrariesFolders": "/home/calvin/EC/ESP32Marauder/esp32_marauder/libraries,/home/calvin/Arduino/libraries",
-  "sketchLocation": "/home/calvin/EC/ESP32Marauder/esp32_marauder"
-}
