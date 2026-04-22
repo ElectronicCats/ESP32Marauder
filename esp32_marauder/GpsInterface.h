@@ -58,6 +58,11 @@ class GpsInterface {
 
     void setType(String t);
 
+    // Advanced GPS Control
+    void setAGNSS(bool enabled);
+    void setUpdateRate(uint8_t rate_hz); // 1, 5, or 10
+    void setConstellations(bool advanced);
+
     void enqueue(MicroNMEA& nmea);
     LinkedList<nmea_sentence_t>* get_queue();
     void flush_queue();
@@ -69,6 +74,7 @@ class GpsInterface {
 
     void sendSentence(const char* sentence);
     void sendSentence(Stream &s, const char* sentence);
+    void sendPMTKCommand(const char* command);
 
     String generateGXgga();
     String generateGXrmc();
@@ -110,6 +116,21 @@ class GpsInterface {
     unsigned int text_cycles=0;
     LinkedList<String> *text_in=NULL;
     LinkedList<String> *text=NULL;
+
+    char nmea_buffer[128];
+    int buffer_pos = 0;
+    int sats_in_view = 0;
+    int last_sats_viewed = 0;
+    String last_datetime_str = "2026-01-01 00:00:00";
+    String last_time_str = "000000.00";
+    String last_date_str = "010126";
+    String last_lat = "0.0000000";
+    String last_lon = "0.0000000";
+    float last_alt = 0.0;
+    float last_accuracy = 63.75;
+    bool time_synced = false;
+    bool coords_synced = false;
+    int timezone_offset = -6; // Default UTC-6 
 
     String generateType();
     void flush_queue_text();

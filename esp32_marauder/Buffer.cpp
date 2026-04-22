@@ -1,7 +1,10 @@
 #include "Buffer.h"
 #include "lang_var.h"
 
+extern "C" int ets_printf(const char *fmt, ...);
+
 Buffer::Buffer(){
+  ets_printf("[CONSTRUCTOR] Buffer\n");
   bufA = (uint8_t*)malloc(BUF_SIZE);
   bufB = (uint8_t*)malloc(BUF_SIZE);
 }

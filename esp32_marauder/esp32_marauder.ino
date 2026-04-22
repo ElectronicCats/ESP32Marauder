@@ -197,7 +197,11 @@ void setup()
     display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
   #endif
 
-  backlightOff();
+  wifi_scan_obj.main(currentTime);
+
+  #ifdef HAS_GPS
+    gps_obj.main();
+  #endif
 
   // Draw the title screen
   /*

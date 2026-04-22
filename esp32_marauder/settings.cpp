@@ -1,5 +1,11 @@
 #include "settings.h"
 
+extern "C" int ets_printf(const char *fmt, ...);
+
+Settings::Settings() {
+  ets_printf("[CONSTRUCTOR] Settings\n");
+}
+
 String Settings::getSettingsString() {
   return this->json_settings_string;
 }
@@ -11,8 +17,6 @@ bool Settings::begin() {
   }
 
   File settingsFile;
-
-  //SPIFFS.remove("/settings.json"); // NEED TO REMOVE THIS LINE
 
   if (SPIFFS.exists("/settings.json")) {
     settingsFile = SPIFFS.open("/settings.json", FILE_READ);
@@ -98,6 +102,9 @@ bool Settings::loadSetting<bool>(String key) {
     if (json["Settings"][i]["name"].as<String>() == key)
       return json["Settings"][i]["value"];
   }
+
+  // Default to true for new GPS features to ensure maximum performance out-of-the-box
+  if (key == "GPS_AGNSS" || key == "GPS_Advanced") return true;
 
   return false;
 }
@@ -287,6 +294,24 @@ bool Settings::createDefaultSettings(fs::FS &fs) {
   jsonBuffer["Settings"][3]["value"] = true;
   jsonBuffer["Settings"][3]["range"]["min"] = false;
   jsonBuffer["Settings"][3]["range"]["max"] = true;
+
+  jsonBuffer["Settings"][4]["name"] = "GPS_AGNSS";
+  jsonBuffer["Settings"][4]["type"] = "bool";
+  jsonBuffer["Settings"][4]["value"] = true;
+  jsonBuffer["Settings"][4]["range"]["min"] = false;
+  jsonBuffer["Settings"][4]["range"]["max"] = true;
+
+  jsonBuffer["Settings"][5]["name"] = "GPS_UpdateRate";
+  jsonBuffer["Settings"][5]["type"] = "uint8_t";
+  jsonBuffer["Settings"][5]["value"] = 1;
+  jsonBuffer["Settings"][5]["range"]["min"] = 1;
+  jsonBuffer["Settings"][5]["range"]["max"] = 10;
+
+  jsonBuffer["Settings"][6]["name"] = "GPS_Advanced";
+  jsonBuffer["Settings"][6]["type"] = "bool";
+  jsonBuffer["Settings"][6]["value"] = true;
+  jsonBuffer["Settings"][6]["range"]["min"] = false;
+  jsonBuffer["Settings"][6]["range"]["max"] = true;
 
   //jsonBuffer.printTo(settingsFile);
   if (serializeJson(jsonBuffer, settingsFile) == 0) {

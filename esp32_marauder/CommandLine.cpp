@@ -1,5 +1,18 @@
 #include "CommandLine.h"
 
+#ifdef HAS_NFC
+  #include "NfcInterface.h"
+#endif
+
+#ifdef HAS_GPS
+  #include "GpsInterface.h"
+  #ifdef MARAUDER_FLIPPER_C5
+    #define GpsSerial Serial1
+  #endif
+#endif
+
+extern "C" int ets_printf(const char *fmt, ...);
+
 CommandLine::CommandLine() {
 }
 
@@ -262,6 +275,12 @@ void CommandLine::runCommand(String input) {
       #endif
       Serial.println(HELP_BT_SKIM_CMD);
     #endif
+
+    // NFC
+    #ifdef HAS_NFC
+      Serial.println(HELP_NFC_CMD);
+    #endif
+
     Serial.println(HELP_FOOT);
     return;
   }
@@ -554,43 +573,34 @@ void CommandLine::runCommand(String input) {
       int cmd_sw = this->argSearch(&cmd_args, "-c");
       int html_sw = this->argSearch(&cmd_args, "-w");
 
-      if (cmd_sw != -1) {
-        String et_command = cmd_args.get(cmd_sw + 1);
-        if (et_command == "start") {
-          Serial.println("Starting Evil Portal. Stop with " + (String)STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          if (html_sw != -1) {
-            String target_html_name = cmd_args.get(html_sw + 1);
-            evil_portal_obj.target_html_name = target_html_name;
-            evil_portal_obj.using_serial_html = false;
-            Serial.println("Set html file as " + evil_portal_obj.target_html_name);
-          }
-          //else {
-          //  evil_portal_obj.target_html_name = "index.html";
-          //}
-          wifi_scan_obj.StartScan(WIFI_SCAN_EVIL_PORTAL, TFT_MAGENTA);
+      String et_command = "";
+      if (cmd_sw != -1) et_command = cmd_args.get(cmd_sw + 1);
+      else if (html_sw != -1) et_command = "start"; // Auto-start if only -w is provided
+
+      if (et_command == "start") {
+        Serial.println("Starting Evil Portal. Stop with " + (String)STOPSCAN_CMD);
+        #ifdef HAS_SCREEN
+          display_obj.clearScreen();
+          menu_function_obj.drawStatusBar();
+        #endif
+        if (html_sw != -1) {
+          String target_html_name = cmd_args.get(html_sw + 1);
+          evil_portal_obj.target_html_name = target_html_name;
+          evil_portal_obj.using_serial_html = false;
+          Serial.println("Set html file as " + evil_portal_obj.target_html_name);
         }
-        else if (et_command == "reset") {
-          
-        }
-        else if (et_command == "ack") {
-          
-        }
-        else if (et_command == "sethtml") {
+        wifi_scan_obj.StartScan(WIFI_SCAN_EVIL_PORTAL, TFT_MAGENTA);
+      }
+      else if (et_command == "sethtml") {
+        if (cmd_args.size() > (cmd_sw + 2)) {
           String target_html_name = cmd_args.get(cmd_sw + 2);
           evil_portal_obj.target_html_name = target_html_name;
           evil_portal_obj.using_serial_html = false;
           Serial.println("Set html file as " + evil_portal_obj.target_html_name);
         }
-        else if (et_command == "sethtmlstr") {
-          evil_portal_obj.setHtmlFromSerial();
-        }
-        else if (et_command == "setap") {
-
-        }
+      }
+      else if (et_command == "sethtmlstr") {
+        evil_portal_obj.setHtmlFromSerial();
       }
     }
     else if (cmd_args.get(0) == SCANAP_CMD) {
@@ -997,6 +1007,84 @@ void CommandLine::runCommand(String input) {
         }
       }
     }
+
+    // NFC command
+    #ifdef HAS_NFC
+    else if (cmd_args.get(0) == NFC_CMD) {
+      int scan_sw = this->argSearch(&cmd_args, "scan");
+      int read_sw = this->argSearch(&cmd_args, "read");
+      int u_sw = this->argSearch(&cmd_args, "-u");
+      int t_sw = this->argSearch(&cmd_args, "-t");
+      int v_sw = this->argSearch(&cmd_args, "-v");
+
+      if (scan_sw != -1) {
+        nfc_obj.deep_scan(); // Perform brute force pin discovery
+      }
+      else if (read_sw != -1) {
+        nfc_obj.read_tag_content();
+      }
+      else if (u_sw != -1 && u_sw + 1 < cmd_args.size()) {
+        String url = cmd_args.get(u_sw + 1);
+        if (nfc_obj.write_ndef_uri(url.c_str()))
+          Serial.println("NFC_WRITE_SUCCESS: URI");
+        else
+          Serial.println("NFC_WRITE_ERROR: URI");
+      }
+      else if (t_sw != -1 && t_sw + 1 < cmd_args.size()) {
+        String text = cmd_args.get(t_sw + 1);
+        if (nfc_obj.write_ndef_text(text.c_str()))
+          Serial.println("NFC_WRITE_SUCCESS: TEXT");
+        else
+          Serial.println("NFC_WRITE_ERROR: TEXT");
+      }
+      else if (v_sw != -1 && v_sw + 1 < cmd_args.size()) {
+        String vcard = cmd_args.get(v_sw + 1);
+        int comma1 = vcard.indexOf(',');
+        int comma2 = vcard.indexOf(',', comma1 + 1);
+        if (comma1 != -1 && comma2 != -1) {
+          String name = vcard.substring(0, comma1);
+          String phone = vcard.substring(comma1 + 1, comma2);
+          String email = vcard.substring(comma2 + 1);
+          if (nfc_obj.write_ndef_vcard(name.c_str(), phone.c_str(), email.c_str()))
+            Serial.println("NFC_WRITE_SUCCESS: VCARD");
+          else
+            Serial.println("NFC_WRITE_ERROR: VCARD");
+        } else {
+          Serial.println("Invalid vCard format. Use <name,phone,email>");
+        }
+      }
+      else {
+        Serial.println("Usage: nfc [scan] [-u url] [-t text] [-v name,phone,email]");
+      }
+    }
+    // Legacy DragonJar Commands
+    else if (cmd_args.get(0).startsWith("URI:")) {
+        String url = cmd_args.get(0).substring(4);
+        if (url.length() > 0) {
+            // Add http:// if missing (DragonJar convention)
+            if (!url.startsWith("http")) url = "http://" + url;
+            nfc_obj.write_ndef_uri(url.c_str());
+        }
+    }
+    else if (cmd_args.get(0).startsWith("TEXT:")) {
+        String text = cmd_args.get(0).substring(5);
+        if (text.length() > 0) nfc_obj.write_ndef_text(text.c_str());
+    }
+    else if (cmd_args.get(0).startsWith("VCARD:")) {
+        String raw = cmd_args.get(0).substring(6);
+        // Format: Name|Phone|Email
+        int pipe1 = raw.indexOf('|');
+        int pipe2 = raw.indexOf('|', pipe1 + 1);
+        if (pipe1 != -1 && pipe2 != -1) {
+            String name = raw.substring(0, pipe1);
+            String phone = raw.substring(pipe1 + 1, pipe2);
+            String email = raw.substring(pipe2 + 1);
+            nfc_obj.write_ndef_vcard(name.c_str(), phone.c_str(), email.c_str());
+        } else {
+            Serial.println("Invalid VCARD format. Use <Name|Phone|Email>");
+        }
+    }
+    #endif
     /*else if (cmd_args.get(0) == BT_SOUR_APPLE_CMD) {
       #ifdef HAS_BT
         Serial.println("Starting Sour Apple attack. Stop with " + (String)STOPSCAN_CMD);

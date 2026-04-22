@@ -4,6 +4,12 @@
 #define WiFiScan_h
 
 #include "configs.h"
+
+#ifdef MARAUDER_FLIPPER_C5
+  #define MARAUDER_IF WIFI_IF_AP
+#else
+  #define MARAUDER_IF WIFI_IF_AP
+#endif
 #include "utils.h"
 
 #include <ArduinoJson.h>
@@ -19,6 +25,7 @@
 #include <math.h>
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
+#include "esp_mac.h"
 #ifdef HAS_BT
   #include "esp_bt.h"
 #endif
@@ -267,6 +274,8 @@ class WiFiScan
                                   /* SSID */
                                   };
 
+    // Standard deauth frame (0xC0). NOTE: ESP32-C5 with ESP-IDF v5.x
+    // blocks this at firmware level - deauth attacks are not supported on C5.
     uint8_t deauth_frame_default[26] = {
                               0xc0, 0x00, 0x3a, 0x01,
                               0xff, 0xff, 0xff, 0xff, 0xff, 0xff,

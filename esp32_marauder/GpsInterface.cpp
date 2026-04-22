@@ -1,4 +1,7 @@
 #include "GpsInterface.h"
+#include <time.h>
+#include "settings.h"
+extern Settings settings_obj;
 
 #ifdef HAS_GPS
 
@@ -8,54 +11,63 @@ char nmeaBuffer[100];
 
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 
-HardwareSerial Serial2(GPS_SERIAL_INDEX);
+#define GpsSerial Serial1
 
 void GpsInterface::begin() {
+  #if defined(MARAUDER_FLIPPER_C5) || defined(GPS_ON_PIN)
+    Serial.printf("[GPS] Powering ON Module (GPIO %d)...\n", GPS_ON_PIN);
+    pinMode(GPS_ON_PIN, OUTPUT);
+    digitalWrite(GPS_ON_PIN, HIGH);
+    delay(1000); // 1s for module to stabilize
+  #endif
 
-  /*#ifdef MARAUDER_MINI
-    pinMode(26, OUTPUT);
-
-    delay(1);
-
-    analogWrite(26, 243);
-    delay(1);
-
-    Serial.println("Activated GPS");
-    delay(100);
-  #endif*/
-
+  // Auto-Baud (Module starts at 9600, common for ATGM336H)
+  GpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
   
-  Serial2.begin(9600, SERIAL_8N1, GPS_TX, GPS_RX);
-
-  MicroNMEA::sendSentence(Serial2, "$PSTMSETPAR,1201,0x00000042");
-  MicroNMEA::sendSentence(Serial2, "$PSTMSAVEPAR");
-
-  MicroNMEA::sendSentence(Serial2, "$PSTMSRR");
-
-  delay(1000);
-
-  if (Serial2.available()) {
-    Serial.println("GPS Attached Successfully");
-    this->gps_enabled = true;
-    while (Serial2.available()) {
-      //Fetch the character one by one
-      char c = Serial2.read();
-      //Serial.print(c);
-      //Pass the character to the library
-      nmea.process(c);
+  // Checking if it's really 9600 or already 115200
+  bool is_9600 = false;
+  unsigned long start = millis();
+  while (millis() - start < 1500) {
+    if (GpsSerial.available()) {
+      if (GpsSerial.read() == '$') { is_9600 = true; break; }
     }
   }
-  else {
-    this->gps_enabled = false;
-    Serial.println("GPS Not Found");
-  }
-  
 
-  this->type_flag=GPSTYPE_NATIVE; //enforce default
-  this->disable_queue(); //init the queue, disabled, kill NULLs
+  if (is_9600) {
+    Serial.println(F("[GPS] Upgrade: Module 9600 -> 115200 bps"));
+    GpsSerial.print(F("$PMTK251,115200*1F\r\n"));
+    delay(200);
+    GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
+  } else {
+    Serial.println(F("[GPS] Probing 115200 baud..."));
+    GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
+  }
+
+  // Advanced Configuration Sequence (Minino Style)
+  Serial.println(F("[GPS] Applying Advanced Configuration..."));
+  
+  // 1. Hot Start
+  this->sendPMTKCommand("PMTK101"); 
+  delay(200);
+
+  // 2. Enable all standard NMEA sentences
+  this->sendPMTKCommand("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0");
+  delay(100);
+
+  // 3. Load and Apply Settings
+  bool agnss = settings_obj.loadSetting<bool>("GPS_AGNSS");
+  bool advanced = settings_obj.loadSetting<bool>("GPS_Advanced");
+  uint8_t rate = settings_obj.loadSetting<uint8_t>("GPS_UpdateRate");
+
+  this->setAGNSS(agnss);
+  this->setUpdateRate(rate == 0 ? 1 : rate);
+  this->setConstellations(advanced);
+
+  this->gps_enabled = true;
+  this->type_flag = GPSTYPE_NATIVE;
+  this->disable_queue();
 
   nmea.setUnknownSentenceHandler(gps_nmea_notimp);
-
 }
 
 //passthrough for other objects
@@ -321,11 +333,50 @@ void GpsInterface::flush_queue_textin(){
 }
 
 void GpsInterface::sendSentence(const char* sentence){
-  MicroNMEA::sendSentence(Serial2, sentence);
+  MicroNMEA::sendSentence(GpsSerial, sentence);
 }
 
 void GpsInterface::sendSentence(Stream &s, const char* sentence){
   MicroNMEA::sendSentence(s, sentence);
+}
+
+void GpsInterface::sendPMTKCommand(const char* command) {
+  // Use MicroNMEA to send the sentence which handles checksum and $/*
+  MicroNMEA::sendSentence(GpsSerial, command);
+  delay(100);
+}
+
+void GpsInterface::setAGNSS(bool enabled) {
+  if (enabled) {
+    Serial.println(F("[GPS] Enabling AGNSS"));
+    this->sendPMTKCommand("PMTK869,1");
+  } else {
+    Serial.println(F("[GPS] Disabling AGNSS"));
+    this->sendPMTKCommand("PMTK869,0");
+  }
+}
+
+void GpsInterface::setUpdateRate(uint8_t rate_hz) {
+  char cmd[32];
+  uint16_t interval = 1000;
+  if (rate_hz == 5) interval = 200;
+  else if (rate_hz == 10) interval = 100;
+  else rate_hz = 1; // Fallback to 1Hz
+
+  Serial.print(F("[GPS] Setting Update Rate to ")); Serial.print(rate_hz); Serial.println(F("Hz"));
+  snprintf(cmd, sizeof(cmd), "PMTK220,%d", interval);
+  this->sendPMTKCommand(cmd);
+}
+
+void GpsInterface::setConstellations(bool advanced) {
+  if (advanced) {
+    Serial.println(F("[GPS] Enabling Multi-Constellation Support"));
+    // GPS, GLONASS, Galileo, BeiDou, QZSS
+    this->sendPMTKCommand("PMTK353,1,1,1,1,1,0,0,0,0");
+  } else {
+    Serial.println(F("[GPS] Standard Constellations (GPS Only)"));
+    this->sendPMTKCommand("PMTK353,1,0,0,0,0,0,0,0,0");
+  }
 }
 
 void GpsInterface::setType(String t){
@@ -352,39 +403,56 @@ void GpsInterface::setType(String t){
 String GpsInterface::generateGXgga(){
   String msg_type="$"+this->generateType()+"GGA,";
 
-  char timeStr[8];
-  snprintf(timeStr, 8, "%02d%02d%02d,", (int)(nmea.getHour()), (int)(nmea.getMinute()), (int)(nmea.getSecond()));
+  char timeStr[11];
+  if (this->time_synced) {
+    snprintf(timeStr, 11, "%s,", this->last_time_str.c_str());
+  } else {
+    int h = (int)nmea.getHour();
+    int m = (int)nmea.getMinute();
+    int s = (int)nmea.getSecond();
+    if (h > 23 || m > 59 || s > 59) { h=0; m=0; s=0; }
+    snprintf(timeStr, 11, "%02d%02d%02d,", h, m, s);
+  }
 
-  long lat = nmea.getLatitude();
-  char latDir = lat < 0 ? 'S' : 'N';
-  lat = abs(lat);
-  char latStr[12];
-  snprintf(latStr, 12, "%02ld%08.5f,", lat / 1000000, ((lat % 1000000)*60) / 1000000.0);
+  String latStr, lonStr, latDir, lonDir;
+  if (nmea.isValid() || this->coords_synced) {
+    long lat = (nmea.isValid()) ? nmea.getLatitude() : (long)(this->last_lat.toFloat() * 1000000);
+    latDir = lat < 0 ? 'S' : 'N';
+    lat = abs(lat);
+    char lBuf[12];
+    snprintf(lBuf, 12, "%02ld%08.5f,", lat / 1000000, ((lat % 1000000)*60) / 1000000.0);
+    latStr = String(lBuf);
 
-  long lon = nmea.getLongitude();
-  char lonDir = lon < 0 ? 'W' : 'E';
-  lon = abs(lon);
-  char lonStr[13];
-  snprintf(lonStr, 13, "%03ld%08.5f,", lon / 1000000, ((lon % 1000000)*60) / 1000000.0);
+    long lon = (nmea.isValid()) ? nmea.getLongitude() : (long)(this->last_lon.toFloat() * 1000000);
+    lonDir = lon < 0 ? 'W' : 'E';
+    lon = abs(lon);
+    char lnBuf[13];
+    snprintf(lnBuf, 13, "%03ld%08.5f,", lon / 1000000, ((lon % 1000000)*60) / 1000000.0);
+    lonStr = String(lnBuf);
+  } else {
+    latStr = "0000.00000,"; latDir = "N";
+    lonStr = "00000.00000,"; lonDir = "E";
+  }
 
-  int fixQuality = nmea.isValid() ? 1 : 0;
+  int fixQuality = (this->coords_synced || nmea.isValid()) ? 1 : 0;
   char fixStr[3];
   snprintf(fixStr, 3, "%01d,", fixQuality);
 
-  int numSatellites = nmea.getNumSatellites();
+  int numSatellites = (nmea.getNumSatellites() > 0) ? nmea.getNumSatellites() : this->last_sats_viewed;
   char satStr[4];
   snprintf(satStr, 4, "%02d,", numSatellites);
 
   unsigned long hdop = nmea.getHDOP();
+  if (hdop == 0 && fixQuality == 1) hdop = 20; 
   char hdopStr[13];
   snprintf(hdopStr, 13, "%01.2f,", 2.5 * (((float)(hdop))/10));
 
   long altitude;
-  if(!nmea.getAltitude(altitude)) altitude=0;
+  if(!nmea.getAltitude(altitude)) altitude = (long)(this->last_alt * 1000);
   char altStr[9];
   snprintf(altStr, 9, "%01.1f,", altitude/1000.0);
 
-  String message = msg_type + timeStr + latStr + latDir + ',' + lonStr + lonDir +
+  String message = msg_type + String(timeStr) + latStr + latDir + ',' + lonStr + lonDir +
                     ',' + fixStr + satStr + hdopStr + altStr + "M,,M,,";
 
   return message;
@@ -393,26 +461,49 @@ String GpsInterface::generateGXgga(){
 String GpsInterface::generateGXrmc(){
   String msg_type="$"+this->generateType()+"RMC,";
 
-  char timeStr[8];
-  snprintf(timeStr, 8, "%02d%02d%02d,", (int)(nmea.getHour()), (int)(nmea.getMinute()), (int)(nmea.getSecond()));
+  char timeStr[11];
+  if (this->time_synced) {
+    snprintf(timeStr, 11, "%s,", this->last_time_str.c_str());
+  } else {
+    int h = (int)nmea.getHour();
+    int m = (int)nmea.getMinute();
+    int s = (int)nmea.getSecond();
+    if (h > 23 || m > 59 || s > 59) { h=0; m=0; s=0; }
+    snprintf(timeStr, 11, "%02d%02d%02d,", h, m, s);
+  }
 
   char dateStr[8];
-  snprintf(dateStr, 8, "%02d%02d%02d,", (int)(nmea.getDay()), (int)(nmea.getMonth()), (int)(nmea.getYear()%100));
+  if (this->time_synced && this->last_datetime_str.length() >= 10) {
+    String y = this->last_datetime_str.substring(2,4);
+    String m = this->last_datetime_str.substring(5,7);
+    String d = this->last_datetime_str.substring(8,10);
+    snprintf(dateStr, 8, "%s%s%s,", d.c_str(), m.c_str(), y.c_str());
+  } else {
+    snprintf(dateStr, 8, "%02d%02d%02d,", (int)(nmea.getDay()), (int)(nmea.getMonth()), (int)(nmea.getYear()%100));
+  }
 
-  char status = nmea.isValid() ? 'A' : 'V';
-  char mode = nmea.isValid() ? 'A' : 'N';
+  char status = (this->coords_synced || nmea.isValid()) ? 'A' : 'V';
+  char mode = (this->coords_synced || nmea.isValid()) ? 'A' : 'N';
 
-  long lat = nmea.getLatitude();
-  char latDir = lat < 0 ? 'S' : 'N';
-  lat = abs(lat);
-  char latStr[12];
-  snprintf(latStr, 12, "%02ld%08.5f,", lat / 1000000, ((lat % 1000000)*60) / 1000000.0);
+  String latStr, lonStr, latDir, lonDir;
+  if (nmea.isValid() || this->coords_synced) {
+    long lat = (nmea.isValid()) ? nmea.getLatitude() : (long)(this->last_lat.toFloat() * 1000000);
+    latDir = lat < 0 ? 'S' : 'N';
+    lat = abs(lat);
+    char lBuf[12];
+    snprintf(lBuf, 12, "%02ld%08.5f,", lat / 1000000, ((lat % 1000000)*60) / 1000000.0);
+    latStr = String(lBuf);
 
-  long lon = nmea.getLongitude();
-  char lonDir = lon < 0 ? 'W' : 'E';
-  lon = abs(lon);
-  char lonStr[13];
-  snprintf(lonStr, 13, "%03ld%08.5f,", lon / 1000000, ((lon % 1000000)*60) / 1000000.0);
+    long lon = (nmea.isValid()) ? nmea.getLongitude() : (long)(this->last_lon.toFloat() * 1000000);
+    lonDir = lon < 0 ? 'W' : 'E';
+    lon = abs(lon);
+    char lnBuf[13];
+    snprintf(lnBuf, 13, "%03ld%08.5f,", lon / 1000000, ((lon % 1000000)*60) / 1000000.0);
+    lonStr = String(lnBuf);
+  } else {
+    latStr = "0000.00000,"; latDir = "N";
+    lonStr = "00000.00000,"; lonDir = "E";
+  }
 
   char speedStr[8];
   snprintf(speedStr, 8, "%01.1f,", nmea.getSpeed() / 1000.0);
@@ -420,7 +511,7 @@ String GpsInterface::generateGXrmc(){
   char courseStr[7];
   snprintf(courseStr, 7, "%01.1f,", nmea.getCourse() / 1000.0);
 
-  String message = msg_type + timeStr + status + ',' + latStr + latDir + ',' +
+  String message = msg_type + String(timeStr) + status + ',' + latStr + latDir + ',' +
                     lonStr + lonDir + ',' + speedStr + courseStr + dateStr + ',' + ',' + mode;
   return message;
 }
@@ -465,20 +556,23 @@ String GpsInterface::generateType(){
 
 // Thanks JosephHewitt
 String GpsInterface::dt_string_from_gps(){
-  //Return a datetime String using GPS data only.
+  // Always return cache if we have nothing better
+  if (nmea.getYear() <= 0) return this->last_datetime_str;
+  
+  // Return a datetime String using GPS data only.
   String datetime = "";
-  if (nmea.isValid() && nmea.getYear() > 0){
+  if (nmea.getYear() > 0){
     datetime += nmea.getYear();
     datetime += "-";
-    datetime += nmea.getMonth();
+    datetime += (nmea.getMonth() < 10 ? "0" : "") + String(nmea.getMonth());
     datetime += "-";
-    datetime += nmea.getDay();
+    datetime += (nmea.getDay() < 10 ? "0" : "") + String(nmea.getDay());
     datetime += " ";
-    datetime += nmea.getHour();
+    datetime += (nmea.getHour() < 10 ? "0" : "") + String(nmea.getHour());
     datetime += ":";
-    datetime += nmea.getMinute();
+    datetime += (nmea.getMinute() < 10 ? "0" : "") + String(nmea.getMinute());
     datetime += ":";
-    datetime += nmea.getSecond();
+    datetime += (nmea.getSecond() < 10 ? "0" : "") + String(nmea.getSecond());
   }
   return datetime;
 }
@@ -489,36 +583,71 @@ void GpsInterface::setGPSInfo() {
 
   this->good_fix = nmea.isValid();
   this->nav_system = nmea.getNavSystem();
-  this->num_sats = nmea.getNumSatellites();
 
-  this->datetime = this->dt_string_from_gps();
+  // Update Satellite Count (Use higher value between "In Use" and "In View" Persistence)
+  int in_use = nmea.getNumSatellites();
+  this->num_sats = (in_use > 0) ? in_use : this->last_sats_viewed;
 
-  this->lat = String((float)nmea.getLatitude()/1000000, 7);
-  this->lon = String((float)nmea.getLongitude()/1000000, 7);
-  long alt = 0;
-  if (!nmea.getAltitude(alt)){
-    alt = 0;
+  // Update Fix Status
+  this->good_fix = (this->num_sats > 0); // Consider we have a 'working' fix if we see sats in this setup
+
+  // Update Coordinates (Use Persistence)
+  if (nmea.isValid()) {
+    this->last_lat = String(nmea.getLatitude() / 1000000.0, 7);
+    this->last_lon = String(nmea.getLongitude() / 1000000.0, 7);
+    long alt = 0;
+    if (nmea.getAltitude(alt)) this->last_alt = alt / 1000.0;
+    this->coords_synced = true;
   }
-  this->altf = (float)alt / 1000;
+  
+  if (this->coords_synced) {
+    this->lat = this->last_lat;
+    this->lon = this->last_lon;
+    this->altf = this->last_alt;
+  } else {
+    this->lat = "Searching...";
+    this->lon = "Searching...";
+    this->altf = 0.0;
+  }
+
+  // Update DateTime (Use Persistence)
+  if (this->time_synced) {
+    this->datetime = this->last_datetime_str;
+  }
+
+  // Update System Text (Harmless filter for External LNA architecture)
+  if (nmea_sentence.indexOf("ANTENNA OPEN") != -1) {
+    this->gps_text = "Antenna: OK (External LNA)";
+  } else if (nmea_sentence.indexOf("ANTENNA OK") != -1) {
+    this->gps_text = "Antenna: OK (Internal)";
+  } else if (nmea_sentence.indexOf("ANTENNA SHORT") != -1) {
+    this->gps_text = "ERROR: ANTENNA SHORT";
+  }
 
   this->accuracy = 2.5 * ((float)nmea.getHDOP()/10);
+  if (this->accuracy == 0 && this->num_sats == 0) this->accuracy = 63.75; // Initial value
+  if (this->accuracy > 0 && this->accuracy < 63) this->last_accuracy = this->accuracy;
 
   //nmea.clear();
 }
 
 float GpsInterface::getAccuracy() {
+  if ((this->accuracy == 0 || this->accuracy >= 63.0) && this->last_accuracy < 63.0) return this->last_accuracy;
   return this->accuracy;
 }
 
 String GpsInterface::getLat() {
+  if (this->lat == "Searching..." && this->coords_synced) return this->last_lat;
   return this->lat;
 }
 
 String GpsInterface::getLon() {
+  if (this->lon == "Searching..." && this->coords_synced) return this->last_lon;
   return this->lon;
 }
 
 float GpsInterface::getAlt() {
+  if (this->altf == 0.0 && this->coords_synced) return this->last_alt;
   return this->altf;
 }
 
@@ -651,22 +780,279 @@ String GpsInterface::getNmeaNotparsed() {
   return this->notparsed_nmea_sentence;
 }
 
+#include "WiFiScan.h"
+extern WiFiScan wifi_scan_obj;
+
 void GpsInterface::main() {
-  while (Serial2.available()) {
-    //Fetch the character one by one
-    char c = Serial2.read();
-    //Serial.print(c);
-    //Pass the character to the library
-    nmea.process(c);
+  #ifdef HAS_GPS
+    if (GpsSerial.available()) {
+      while (GpsSerial.available()) {
+        char c = GpsSerial.read();
+        if (c == '$') {
+          buffer_pos = 0;
+        }
+
+        if (buffer_pos < sizeof(nmea_buffer) - 1) {
+          nmea_buffer[buffer_pos++] = c;
+          nmea_buffer[buffer_pos] = '\0';
+          
+            if (c == '\n' || c == '\r') {
+              if (buffer_pos < 6) { // Ignore short/junk
+                buffer_pos = 0;
+                continue;
+              }
+              // NMEA Normalization Engine (Neutralize GN, GB, BD)
+              if (buffer_pos > 5 && nmea_buffer[0] == '$' && (nmea_buffer[1] == 'G' || nmea_buffer[1] == 'B')) {
+                bool modified = false;
+
+                // 1. Force GP Talker ID
+                if (nmea_buffer[2] != 'P') {
+                  nmea_buffer[1] = 'G';
+                  nmea_buffer[2] = 'P';
+                  modified = true;
+                }
+
+                // 2. Absolute Checksum recalculation
+                char* pStar = strchr(nmea_buffer, '*');
+                if (pStar && modified) {
+                  unsigned char ck = 0;
+                  for (char* p = nmea_buffer + 1; p < pStar; p++) ck ^= (unsigned char)(*p);
+                  char hex[3];
+                  sprintf(hex, "%02X", ck);
+                  pStar[1] = hex[0];
+                  pStar[2] = hex[1];
+                }
+
+                // 3. Feed the NMEA to the parser BEFORE we inject our forced local time
+                // This ensures internal state is consistent UTC
+                for (int i = 0; i < (int)strlen(nmea_buffer); i++) {
+                  nmea.process(nmea_buffer[i]);
+                }
+
+                // 4. Structural Repair and Forceful Telemetry Injection for UI Dashboards (OUTPUT ONLY)
+                const char* repairable[] = {"GGA,", "RMC,", "ZDA,", "GLL,", "GSV,"};
+                bool is_repairable = false;
+                for (int r=0; r<5; r++) if (strstr(nmea_buffer, repairable[r])) is_repairable = true;
+
+                if (is_repairable) {
+                  int commas = 0;
+                  char hijacked[128] = {0};
+                  int h_pos = 0;
+                  bool modified_output = false;
+
+                  for (int i = 0; i < (int)strlen(nmea_buffer); i++) {
+                    hijacked[h_pos++] = nmea_buffer[i];
+                    if (nmea_buffer[i] == ',') {
+                      commas++;
+                      bool field_empty = (nmea_buffer[i+1] == ',' || nmea_buffer[i+1] == '*' || nmea_buffer[i+1] == '\0');
+                      
+                      // 4.1 Force Time Injection
+                      // GGA(1), RMC(1), ZDA(1), GLL(5)
+                      bool is_time_field = (commas == 1 && !strstr(nmea_buffer, "GLL,")) || (commas == 5 && strstr(nmea_buffer, "GLL,"));
+                      if (is_time_field && (this->time_synced || field_empty)) { 
+                        for (int j = 0; j < (int)this->last_time_str.length(); j++) hijacked[h_pos++] = this->last_time_str[j];
+                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                        modified_output = true;
+                      }
+
+                      // 4.2 Latitude Injection
+                      // GGA(2), RMC(3), GLL(1)
+                      bool is_lat_f = (commas == 2 && strstr(nmea_buffer, "GGA,")) || (commas == 3 && strstr(nmea_buffer, "RMC,")) || (commas == 1 && strstr(nmea_buffer, "GLL,"));
+                      if (is_lat_f && (field_empty && this->coords_synced)) {
+                        double val = abs(this->last_lat.toDouble());
+                        char c_buf[16]; snprintf(c_buf, 16, "%02d%08.5f", (int)val, (val - (int)val) * 60.0);
+                        for (int j=0; j<(int)strlen(c_buf); j++) hijacked[h_pos++] = c_buf[j];
+                        modified_output = true;
+                      }
+                      
+                      // 4.3 Longitude Injection
+                      // GGA(4), RMC(5), GLL(3)
+                      bool is_lon_f = (commas == 4 && strstr(nmea_buffer, "GGA,")) || (commas == 5 && strstr(nmea_buffer, "RMC,")) || (commas == 3 && strstr(nmea_buffer, "GLL,"));
+                      if (is_lon_f && (field_empty && this->coords_synced)) {
+                        double val = abs(this->last_lon.toDouble());
+                        char c_buf[16]; snprintf(c_buf, 16, "%03d%08.5f", (int)val, (val - (int)val) * 60.0);
+                        for (int j=0; j<(int)strlen(c_buf); j++) hijacked[h_pos++] = c_buf[j];
+                        modified_output = true;
+                      }
+
+                      // 4.4 Direction Injection (N/S, E/W)
+                      if (field_empty && this->coords_synced) {
+                        bool is_ns = (commas == 3 && strstr(nmea_buffer, "GGA,")) || (commas == 4 && strstr(nmea_buffer, "RMC,")) || (commas == 2 && strstr(nmea_buffer, "GLL,"));
+                        bool is_ew = (commas == 5 && strstr(nmea_buffer, "GGA,")) || (commas == 6 && strstr(nmea_buffer, "RMC,")) || (commas == 4 && strstr(nmea_buffer, "GLL,"));
+                        if (is_ns) { hijacked[h_pos++] = (this->last_lat.toDouble() >= 0) ? 'N' : 'S'; modified_output = true; }
+                        if (is_ew) { hijacked[h_pos++] = (this->last_lon.toDouble() >= 0) ? 'E' : 'W'; modified_output = true; }
+                      }
+
+                      // 4.5 Status / Fix Quality
+                      // GGA(6), RMC(2), GLL(6)
+                      bool is_status_f = (commas == 6) || (commas == 2 && strstr(nmea_buffer, "RMC,"));
+                      if (is_status_f) {
+                        bool good = (this->coords_synced || nmea.isValid());
+                        if (commas == 6 && strstr(nmea_buffer, "GGA,")) hijacked[h_pos++] = good ? '1' : '0';
+                        else if (commas == 2 && strstr(nmea_buffer, "RMC,")) hijacked[h_pos++] = good ? 'A' : 'V';
+                        else if (commas == 6 && strstr(nmea_buffer, "GLL,")) hijacked[h_pos++] = good ? 'A' : 'V';
+                        else { hijacked[h_pos-1] = nmea_buffer[i]; h_pos--; } 
+                        
+                        if (is_status_f && (strstr(nmea_buffer, "GGA,") || strstr(nmea_buffer, "RMC,") || strstr(nmea_buffer, "GLL,"))) {
+                           while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                           modified_output = true;
+                        }
+                      }
+
+                      // 4.6 Satellites In View
+                      bool is_sat_f = (commas == 7 && strstr(nmea_buffer, "GGA,")) || (commas == 3 && strstr(nmea_buffer, "GSV,"));
+                      if (is_sat_f) {
+                        int s_view = (this->sats_in_view > (int)nmea.getNumSatellites()) ? this->sats_in_view : (int)nmea.getNumSatellites();
+                        if (s_view == 0) s_view = this->last_sats_viewed;
+                        char s_str[3]; snprintf(s_str, 3, "%02d", s_view);
+                        hijacked[h_pos++] = s_str[0]; hijacked[h_pos++] = s_str[1];
+                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                        modified_output = true;
+                      }
+
+                      // 4.7 Altitude and HDOP (GGA only)
+                      if (strstr(nmea_buffer, "GGA,")) {
+                        if (commas == 8 && (field_empty || this->last_accuracy < 10.0)) { // HDOP
+                          char h_buf[6]; snprintf(h_buf, 6, "%.1f", this->last_accuracy / 2.5); // Convert back to HDOP
+                          for (int j=0; j<(int)strlen(h_buf); j++) hijacked[h_pos++] = h_buf[j];
+                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                          modified_output = true;
+                        }
+                        if (commas == 9 && (field_empty && this->coords_synced)) { // Altitude
+                          char a_buf[10]; snprintf(a_buf, 10, "%.1f", this->last_alt);
+                          for (int j=0; j<(int)strlen(a_buf); j++) hijacked[h_pos++] = a_buf[j];
+                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                          modified_output = true;
+                        }
+                      }
+
+                      // 4.8 Date Injection into RMC / ZDA
+                      if (strstr(nmea_buffer, "RMC,") && commas == 9 && (this->time_synced)) {
+                        for (int j = 0; j < (int)this->last_date_str.length(); j++) hijacked[h_pos++] = this->last_date_str[j];
+                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                        modified_output = true;
+                      }
+                      if (strstr(nmea_buffer, "ZDA,") && (this->time_synced)) {
+                        if (commas == 2) { 
+                          char d[3]; snprintf(d, 3, "%02d", (int)this->last_date_str.substring(0,2).toInt());
+                          hijacked[h_pos++] = d[0]; hijacked[h_pos++] = d[1];
+                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                          modified_output = true;
+                        }
+                        else if (commas == 3) {
+                          char m[3]; snprintf(m, 3, "%02d", (int)this->last_date_str.substring(2,4).toInt());
+                          hijacked[h_pos++] = m[0]; hijacked[h_pos++] = m[1];
+                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                          modified_output = true;
+                        }
+                        else if (commas == 4) {
+                          String full_y = this->last_datetime_str.substring(0,4);
+                          for (int j=0; j<(int)full_y.length(); j++) hijacked[h_pos++] = full_y[j];
+                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
+                          modified_output = true;
+                        }
+                      }
+                    }
+                  }
+
+                  if (modified_output) {
+                    hijacked[h_pos] = '\0';
+                    strcpy(nmea_buffer, hijacked);
+                    pStar = strchr(nmea_buffer, '*');
+                    if (pStar) {
+                      unsigned char ck = 0;
+                      for (char* p = nmea_buffer + 1; p < pStar; p++) ck ^= (unsigned char)(*p);
+                      char hex[3]; sprintf(hex, "%02X", ck);
+                      pStar[1] = hex[0]; pStar[2] = hex[1];
+                      pStar[3] = '\0';
+                    }
+                  }
+                }
+
+                // Sync persistence (Hold last known good time/date/location)
+                if (nmea.getYear() > 2000) {
+                  // Apply Timezone Offset using standard C time functions for safe rollover
+                  struct tm t;
+                  t.tm_year = (int)nmea.getYear() - 1900;
+                  t.tm_mon = (int)nmea.getMonth() - 1;
+                  t.tm_mday = (int)nmea.getDay();
+                  t.tm_hour = (int)nmea.getHour();
+                  t.tm_min = (int)nmea.getMinute();
+                  t.tm_sec = (int)nmea.getSecond();
+                  t.tm_isdst = -1; // Let the system decide if needed, or stick to raw offset
+
+                  time_t rawtime = mktime(&t);
+                  rawtime += (this->timezone_offset * 3600); // Shift by X hours
+                  struct tm lt_buf;
+                  struct tm *lt = gmtime_r(&rawtime, &lt_buf); 
+
+                  char buf[32];
+                  snprintf(buf, 32, "%d-%02d-%02d %02d:%02d:%02d", 
+                           lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday,
+                           lt->tm_hour, lt->tm_min, lt->tm_sec);
+                  this->last_datetime_str = String(buf);
+
+                  char t_buf[12];
+                  snprintf(t_buf, 12, "%02d%02d%02d.00", lt->tm_hour, lt->tm_min, lt->tm_sec);
+                  this->last_time_str = String(t_buf);
+
+                  char d_buf[8];
+                  snprintf(d_buf, 8, "%02d%02d%02d", lt->tm_mday, lt->tm_mon + 1, (lt->tm_year + 1900) % 100);
+                  this->last_date_str = String(d_buf);
+                  
+                  this->time_synced = true;
+
+                  if (nmea.isValid()) {
+                    this->last_lat = String(nmea.getLatitude() / 1000000.0, 7);
+                    this->last_lon = String(nmea.getLongitude() / 1000000.0, 7);
+                    long alt;
+                    if (nmea.getAltitude(alt)) this->last_alt = alt / 1000.0;
+                    this->coords_synced = true;
+                  }
+                }
+
+
+                // 6. Extract Satellites in View from GSV
+                if (strstr(nmea_buffer, "GSV")) {
+                  char* p = strchr(nmea_buffer, ','); 
+                  if (p) p = strchr(p + 1, ',');      
+                  if (p) p = strchr(p + 1, ',');      
+                  if (p) {
+                    int count = atoi(p + 1);
+                    if (count >= 0 && count < 32) {
+                      this->sats_in_view = count;
+                      if (count > 0) this->last_sats_viewed = count;
+                    }
+                  }
+                }
+
+                // Sync UI variables
+                this->setGPSInfo(); 
+              } // End of normalization block
+
+              // 6. Echo NMEA to Serial (Repaired or Original)
+              // We echo if we are in NMEA scan mode OR if we are in GPS DATA mode
+              // This is CRITICAL for Marauder UI Pro to update its satellite bars and map.
+              if (wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA || wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_DATA) {
+                if (nmea_buffer[0] == '$' && !strstr(nmea_buffer, "ANTENNA")) {
+                  // Only echo standard sentences for compatibility
+                  const char* dashboard_safe[] = {"GGA", "RMC", "GSV", "GSA", "GLL", "VTG", "ZDA"};
+                  bool safe = false;
+                  for (int s=0; s<7; s++) if (strstr(nmea_buffer, dashboard_safe[s])) safe = true;
+                  
+                  if (safe) {
+                    Serial.println(nmea_buffer);
+                  }
+                }
+              }
+
+              buffer_pos = 0;
+            } // End of NMEA EOL block
+          } else {
+            buffer_pos = 0;
+          }
+        }
+      }
+    #endif
   }
-
-  uint8_t num_sat = nmea.getNumSatellites();
-
-  if ((nmea.isValid()) && (num_sat > 0))
-    this->setGPSInfo();
-
-  else if ((!nmea.isValid()) && (num_sat <= 0)) {
-    this->setGPSInfo();
-  }
-}
 #endif

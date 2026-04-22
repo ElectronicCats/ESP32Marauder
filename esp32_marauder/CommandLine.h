@@ -92,6 +92,9 @@ const char PROGMEM BT_SPOOFAT_CMD[] = "spoofat";
 const char PROGMEM BT_WARDRIVE_CMD[] = "btwardrive";
 const char PROGMEM BT_SKIM_CMD[] = "sniffskim";
 
+// NFC Command
+const char PROGMEM NFC_CMD[] = "nfc";
+
 
 //// Command help messages
 // Admin
@@ -146,6 +149,10 @@ const char PROGMEM HELP_BT_SPOOFAT_CMD[] = "spoofat -t <index>";
 //onst char PROGMEM HELP_BT_SPAM_ALL_CMD[] = "btspamall";
 const char PROGMEM HELP_BT_WARDRIVE_CMD[] = "btwardrive [-c]";
 const char PROGMEM HELP_BT_SKIM_CMD[] = "sniffskim";
+
+// NFC Command
+const char PROGMEM HELP_NFC_CMD[] = "nfc [scan/read] [-u <url>] [-t <text>] [-v <name,phone,email>]";
+
 const char PROGMEM HELP_FOOT[] = "==================================";
 
 
