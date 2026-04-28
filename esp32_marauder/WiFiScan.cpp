@@ -235,35 +235,47 @@ public:
 class bluetoothScanAirtagCallback : public NimBLEScanCallbacks {
 public:
   void onResult(NimBLEAdvertisedDevice *advertisedDevice) {
+    // DEBUG: Print EVERY device encountered during this scan to verify callback is firing
+    Serial.println("[AirtagScan] Saw a device! (Callback fired)");
+
     if (advertisedDevice->haveManufacturerData()) {
       std::string mfgData = advertisedDevice->getManufacturerData();
-      // Check for Apple Manufacturer ID (0x004C) and Offline Finding type (0x12)
-      if (mfgData.length() >= 4 && mfgData[0] == 0x4C && mfgData[1] == 0x00 && mfgData[2] == 0x12) {
+      
+      if (mfgData.length() >= 2) {
+        uint8_t m0 = (uint8_t)mfgData[0];
+        uint8_t m1 = (uint8_t)mfgData[1];
         
-        AirTag at;
-        at.mac = String(advertisedDevice->getAddress().toString().c_str());
-        
-        // Check if MAC is already in the list
-        bool exists = false;
-        for (int i = 0; i < airtags->size(); i++) {
-           if (airtags->get(i).mac == at.mac) {
-              exists = true;
-              break;
-           }
-        }
-        
-        if (!exists) {
-          const uint8_t* rawPayload = advertisedDevice->getPayload().data();
-          size_t payloadLen = advertisedDevice->getPayload().size();
+        Serial.print("  - MfgData: ");
+        Serial.print(m0, HEX);
+        Serial.print(" ");
+        Serial.println(m1, HEX);
+
+        // Check for Apple Manufacturer ID (0x004C)
+        if (m0 == 0x4C && m1 == 0x00) {
           
-          at.payloadSize = payloadLen;
-          at.payload.assign(rawPayload, rawPayload + payloadLen);
-          at.selected = false;
-          airtags->add(at);
+          AirTag at;
+          at.mac = String(advertisedDevice->getAddress().toString().c_str());
           
-#ifndef MARAUDER_FLIPPER_C5
-          Serial.println("Found AirTag: " + at.mac);
-#endif
+          // Check if MAC is already in the list
+          bool exists = false;
+          for (int i = 0; i < airtags->size(); i++) {
+             if (airtags->get(i).mac == at.mac) {
+                exists = true;
+                break;
+             }
+          }
+          
+          if (!exists) {
+            const uint8_t* rawPayload = advertisedDevice->getPayload().data();
+            size_t payloadLen = advertisedDevice->getPayload().size();
+            
+            at.payloadSize = payloadLen;
+            at.payload.assign(rawPayload, rawPayload + payloadLen);
+            at.selected = false;
+            airtags->add(at);
+            
+            Serial.println("  ---> [ADDED] Apple Device (AirTag/FindMy): " + at.mac);
+          }
         }
       }
     }
@@ -2860,14 +2872,21 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
   display_obj.print_delay_2 = 20;
 #endif
 
-  if (scan_mode != BT_SCAN_WAR_DRIVE_CONT) {
-    NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
-#ifdef MARAUDER_FLIPPER_C5
-    NimBLEDevice::setScanDuplicateCacheSize(50);
-#else
-    NimBLEDevice::setScanDuplicateCacheSize(200);
-#endif
-  }
+  // Bypass global hardware filter config for C5 or specific scans to ensure packets reach NimBLE host
+  #ifdef MARAUDER_FLIPPER_C5
+    NimBLEDevice::setScanFilterMode(0); // Disable hardware filtering
+  #else
+    if (scan_mode != BT_SCAN_WAR_DRIVE_CONT && scan_mode != BT_SCAN_AIRTAG) {
+      NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
+    }
+  #endif
+
+  #ifdef MARAUDER_FLIPPER_C5
+    NimBLEDevice::setScanDuplicateCacheSize(10); // Smaller cache to avoid memory pressure
+    delay(10);
+  #else
+    NimBLEDevice::setScanDuplicateCacheSize(100);
+  #endif
   NimBLEDevice::init("");
   pBLEScan = NimBLEDevice::getScan(); // create new scan
   if ((scan_mode == BT_SCAN_ALL) || (scan_mode == BT_SCAN_AIRTAG) ||
@@ -2897,7 +2916,7 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
       pBLEScan->setScanCallbacks(new bluetoothScanAllCallback(), false);
     else if (scan_mode == BT_SCAN_AIRTAG) {
       this->clearAirtags();
-      pBLEScan->setScanCallbacks(new bluetoothScanAirtagCallback(), true);
+      pBLEScan->setScanCallbacks(new bluetoothScanAirtagCallback(), true); // Must be true to bypass NimBLE host cache
     } else if (scan_mode == BT_SCAN_FLIPPER) {
       this->clearFlippers();
       pBLEScan->setScanCallbacks(new bluetoothScanAllCallback(), true);
@@ -2965,9 +2984,10 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
     pBLEScan->setScanCallbacks(new bluetoothScanSkimmersCallback(), false);
   }
 #ifdef MARAUDER_FLIPPER_C5
-  pBLEScan->setActiveScan(false); // Passive scan is stable on C5
-  pBLEScan->setInterval(200);
-  pBLEScan->setWindow(150);
+  pBLEScan->setActiveScan(true); // Switch to active scan for better discovery on C5
+  pBLEScan->setInterval(100);
+  pBLEScan->setWindow(99);
+  pBLEScan->setDuplicateFilter(false); // Force disable duplicate filter at host level
 #else
   pBLEScan->setActiveScan(
       true); // active scan uses more power, but get results faster
@@ -2975,7 +2995,22 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
   pBLEScan->setWindow(99); // less or equal setInterval value
 #endif
   pBLEScan->setMaxResults(0);
-  pBLEScan->start(0, scanCompleteCB, false);
+
+  // Enable specific settings for AirTag scanning if supported in the future
+  if (scan_mode == BT_SCAN_AIRTAG) {
+      pBLEScan->setDuplicateFilter(false);
+      pBLEScan->setActiveScan(false); // Passive scan is stable on C5
+      pBLEScan->setInterval(200);
+      pBLEScan->setWindow(150);
+  }
+
+  bool scan_started = pBLEScan->start(0, scanCompleteCB, false);
+  if (!scan_started) {
+      #ifndef MARAUDER_FLIPPER_C5
+        Serial.println("[ERROR] NimBLE pBLEScan->start() returned FALSE.");
+      #endif
+  }
+
 #ifndef MARAUDER_FLIPPER_C5
   Serial.println("Started BLE Scan");
 #endif

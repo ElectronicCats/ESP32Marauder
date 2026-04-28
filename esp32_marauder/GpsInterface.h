@@ -139,6 +139,7 @@ class GpsInterface {
     void flush_queue_textin();
     void flush_queue_nmea();
     String dt_string_from_gps();
+    uint8_t calculateChecksum(const char* sentence);
     void setGPSInfo();
 };
 

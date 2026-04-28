@@ -116,6 +116,7 @@ CommandLine cli_obj;
 #endif
 
 const String PROGMEM version_number = MARAUDER_VERSION;
+const String PROGMEM board_target = HARDWARE_NAME;
 
 #ifdef HAS_NEOPIXEL_LED
   Adafruit_NeoPixel strip = Adafruit_NeoPixel(Pixels, PIN, NEO_GRB + NEO_KHZ800);

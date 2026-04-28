@@ -36,6 +36,7 @@ class NfcInterface {
     int write_ndef_uri(const char* uri);
     int write_ndef_text(const char* text, const char* lang_code = "en");
     int write_ndef_vcard(const char* name, const char* phone, const char* email);
+    int write_ndef_wifi(const char* ssid, const char* pass, const char* auth = "WPA2");
 };
 
 extern NfcInterface nfc_obj;

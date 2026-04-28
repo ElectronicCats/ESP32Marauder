@@ -16,55 +16,68 @@ MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 #define GpsSerial Serial1
 
 void GpsInterface::begin() {
+  bool module_found = false;
+
   #if defined(MARAUDER_FLIPPER_C5) || defined(GPS_ON_PIN)
-#ifndef MARAUDER_FLIPPER_C5
-    Serial.printf("[GPS] Powering ON Module (GPIO %d)...\n", GPS_ON_PIN);
-#endif
+    #ifndef MARAUDER_FLIPPER_C5
+      Serial.printf("[GPS] Powering ON Module (GPIO %d)...\n", GPS_ON_PIN);
+    #endif
     pinMode(GPS_ON_PIN, OUTPUT);
     digitalWrite(GPS_ON_PIN, HIGH);
     delay(1000); // 1s for module to stabilize
   #endif
 
-  // Auto-Baud (Module starts at 9600, common for ATGM336H)
+  // 1. Auto-Probe at 9600 baud (Standard for ATGM336H/Quectel)
   GpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
-  
-  // Checking if it's really 9600 or already 115200
-  bool is_9600 = false;
   unsigned long start = millis();
   while (millis() - start < 1500) {
     if (GpsSerial.available()) {
-      if (GpsSerial.read() == '$') { is_9600 = true; break; }
+      if (GpsSerial.read() == '$') { module_found = true; break; }
     }
   }
 
-  if (is_9600) {
-#ifndef MARAUDER_FLIPPER_C5
-    Serial.println(F("[GPS] Upgrade: Module 9600 -> 115200 bps"));
-#endif
-    GpsSerial.print(F("$PMTK251,115200*1F\r\n"));
-    delay(200);
+  // 2. If not found, try 115200 baud (High-speed default)
+  if (!module_found) {
+    #ifndef MARAUDER_FLIPPER_C5
+      Serial.println(F("[GPS] Probing 115200 baud..."));
+    #endif
     GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
-  } else {
-#ifndef MARAUDER_FLIPPER_C5
-    Serial.println(F("[GPS] Probing 115200 baud..."));
-#endif
-    GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
+    start = millis();
+    while (millis() - start < 1000) {
+      if (GpsSerial.available()) {
+        if (GpsSerial.read() == '$') { module_found = true; break; }
+      }
+    }
   }
 
-  // Advanced Configuration Sequence (Minino Style)
-#ifndef MARAUDER_FLIPPER_C5
-  Serial.println(F("[GPS] Applying Advanced Configuration..."));
-#endif
-  
-  // 1. Hot Start
-  this->sendPMTKCommand("PMTK101"); 
-  delay(200);
+  // 3. Result handling
+  if (!module_found) {
+    #ifndef MARAUDER_FLIPPER_C5
+      Serial.println(F("[GPS] Module NOT FOUND. Disabling GPS features."));
+    #endif
+    #ifdef GPS_ON_PIN
+      digitalWrite(GPS_ON_PIN, LOW); // Power down the empty slot/interference
+    #endif
+    this->gps_enabled = false;
+    return;
+  }
 
-  // 2. Enable all standard NMEA sentences
-  this->sendPMTKCommand("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0");
+  // 4. If found at 9600, upgrade to 115200 for performance
+  // Note: We check if we were at 9600 by looking at the current baud? No, just force upgrade.
+  this->sendPMTKCommand("PMTK251,115200"); 
+  delay(200);
+  GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
+
+  // Advanced Configuration Sequence (Minino Style)
+  #ifndef MARAUDER_FLIPPER_C5
+    Serial.println(F("[GPS] Applying Advanced Configuration..."));
+  #endif
+  
+  this->sendPMTKCommand("PMTK101"); // Hot Start
+  delay(200);
+  this->sendPMTKCommand("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"); // All NMEA
   delay(100);
 
-  // 3. Load and Apply Settings
   bool agnss = settings_obj.loadSetting<bool>("GPS_AGNSS");
   bool advanced = settings_obj.loadSetting<bool>("GPS_Advanced");
   uint8_t rate = settings_obj.loadSetting<uint8_t>("GPS_UpdateRate");
@@ -594,9 +607,6 @@ String GpsInterface::generateGXrmc(){
 String GpsInterface::generateType(){
   String msg_type="";
 
-  if(this->type_flag<8) //8=BeiDou in BD mode
-    msg_type+='G';
-
   if(this->type_flag == GPSTYPE_NATIVE){ //type_flag=0
     char system=this->nav_system;
     if(system)
@@ -605,28 +615,36 @@ String GpsInterface::generateType(){
       msg_type+='N';
   }
   else if(this->type_flag == GPSTYPE_GPS) //type_flag=2
-    msg_type+='P';
+    msg_type="GP";
   else if(this->type_flag == GPSTYPE_GLONASS) //type_flag=3
-    msg_type+='L';
+    msg_type="GL";
   else if(this->type_flag == GPSTYPE_GALILEO) //type_flag=4
-    msg_type+='A';
+    msg_type="GA";
   else if(this->type_flag == GPSTYPE_NAVIC) //type_flag=5
-    msg_type+='I';
+    msg_type="NI";
   else if(this->type_flag == GPSTYPE_QZSS) //type_flag=6
-    msg_type+='Q';
+    msg_type="GQ";
   else if(this->type_flag == GPSTYPE_BEIDOU) //type_flag=7
-    msg_type+='B';
+    msg_type="BD";
   else if(this->type_flag == GPSTYPE_BEIDOU_BD){ //type_flag=8
-    msg_type+='B';
-    msg_type+='D';
+    msg_type="BD";
   }
-  else{ //type_flag=1=all ... also default if unset/wrong (obj default is type_flag=0=native)
-    if(this->type_flag>=8) //catch uncaught first char, assume G if not already output
-      msg_type+='G';
-    msg_type+='N';
+  else {
+    msg_type="GN";
   }
 
   return msg_type;
+}
+
+uint8_t GpsInterface::calculateChecksum(const char* sentence) {
+    uint8_t checksum = 0;
+    const char* p = sentence;
+    if (*p == '$') p++;
+    while (*p && *p != '*') {
+        checksum ^= (uint8_t)*p;
+        p++;
+    }
+    return checksum;
 }
 
 // Thanks JosephHewitt
@@ -1074,11 +1092,32 @@ void GpsInterface::main() {
                 }
 
                 // 6. Echo NMEA to Serial (Only during active GPS scan/wardrive)
-                if ((wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA || wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_DATA) && nmea_buffer[0] == '$' && !strstr(nmea_buffer, "ANTENNA")) {
+                if ((wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA || wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_DATA) && nmea_buffer[0] == '$') {
+                    // Block noisy hardware messages
+                    if (strstr(nmea_buffer, "ANTENNA") || strstr(nmea_buffer, "OPEN") || strstr(nmea_buffer, "SHORT")) return;
+
                     const char* dashboard_safe[] = {"GGA", "RMC", "GSV", "GSA", "GLL", "VTG", "ZDA"};
                     bool safe = false;
                     for (int s=0; s<7; s++) if (strstr(nmea_buffer, dashboard_safe[s])) safe = true;
-                    if (safe) Serial.println(nmea_buffer);
+
+                    if (safe) {
+                        // TALKER ID OVERRIDE: Force output to match user-selected constellation
+                        if (this->type_flag != GPSTYPE_NATIVE && this->type_flag != GPSTYPE_ALL) {
+                            String custom_id = this->generateType();
+                            if (custom_id.length() >= 2) {
+                                nmea_buffer[1] = custom_id[0];
+                                nmea_buffer[2] = custom_id[1];
+                                
+                                // Recalculate checksum since we modified the header
+                                uint8_t new_cksum = this->calculateChecksum(nmea_buffer);
+                                char* ck_ptr = strchr(nmea_buffer, '*');
+                                if (ck_ptr) {
+                                    snprintf(ck_ptr + 1, 3, "%02X", new_cksum);
+                                }
+                            }
+                        }
+                        Serial.println(nmea_buffer);
+                    }
                 }
 
                 // Sync UI variables

@@ -275,10 +275,34 @@ int NfcInterface::write_ndef_uri(const char* uri) {
     
     if (!setup_capability_container()) return 0;
     
-    int uri_len = strlen(uri);
-    int payload_len = 1 + uri_len;
-    int record_len = 3 + 1 + payload_len;
-    int total_len = 2 + record_len;
+    // NDEF URI Prefix detection
+    uint8_t prefix_id = 0x00; // No prefix (default)
+    const char* uri_body = uri;
+
+    if (strncmp(uri, "http://www.", 11) == 0) {
+        prefix_id = 0x01;
+        uri_body = uri + 11;
+    } else if (strncmp(uri, "https://www.", 12) == 0) {
+        prefix_id = 0x02;
+        uri_body = uri + 12;
+    } else if (strncmp(uri, "http://", 7) == 0) {
+        prefix_id = 0x03;
+        uri_body = uri + 7;
+    } else if (strncmp(uri, "https://", 8) == 0) {
+        prefix_id = 0x04;
+        uri_body = uri + 8;
+    } else if (strncmp(uri, "tel:", 4) == 0) {
+        prefix_id = 0x05;
+        uri_body = uri + 4;
+    } else if (strncmp(uri, "mailto:", 7) == 0) {
+        prefix_id = 0x06;
+        uri_body = uri + 7;
+    }
+
+    int uri_len = strlen(uri_body);
+    int payload_len = 1 + uri_len;    // Prefix byte + URI body
+    int record_len = 3 + 1 + payload_len; // Header(1) + TypeLen(1) + PayloadLen(1) + Type(1) + Payload
+    int total_len = 2 + record_len;   // TLV Type(1) + TLV Length(1) + Record
     
     uint8_t ndef_data[128];
     if (total_len > sizeof(ndef_data)) {
@@ -289,14 +313,14 @@ int NfcInterface::write_ndef_uri(const char* uri) {
     int pos = 0;
     ndef_data[pos++] = 0x03;        // NDEF TLV Type
     ndef_data[pos++] = record_len;  // NDEF Length
-    ndef_data[pos++] = 0xD1;        // Header
-    ndef_data[pos++] = 0x01;        // Type Length
+    ndef_data[pos++] = 0xD1;        // Header (MB=1, ME=1, SR=1, TNF=0x01)
+    ndef_data[pos++] = 0x01;        // Type Length ('U')
     ndef_data[pos++] = payload_len; // Payload Length
-    ndef_data[pos++] = 0x55;        // Type 'U'
-    ndef_data[pos++] = 0x03;        // URI prefix "http://"
+    ndef_data[pos++] = 0x55;        // Type 'U' (URI)
+    ndef_data[pos++] = prefix_id;   // Compressed Prefix
     
     for (int i = 0; i < uri_len; i++) {
-        ndef_data[pos++] = uri[i];
+        ndef_data[pos++] = uri_body[i];
     }
     return write_ndef_data(ndef_data, total_len);
 }
@@ -390,6 +414,39 @@ int NfcInterface::write_ndef_vcard(const char* name, const char* phone, const ch
         ndef_data[pos++] = vcard[i];
     }
     
+    return write_ndef_data(ndef_data, total_len);
+}
+
+int NfcInterface::write_ndef_wifi(const char* ssid, const char* pass, const char* auth) {
+    this->begin(); 
+    if (device_addr == 0) return 0;
+    if (!setup_capability_container()) return 0;
+
+    // Simple implementation using WiFi:S:SSID;T:AUTH;P:PASS;; format
+    // This is widely supported by Android and iOS
+    char wifi_str[256];
+    int wifi_len = snprintf(wifi_str, sizeof(wifi_str),
+        "WIFI:S:%s;T:%s;P:%s;;",
+        ssid, auth, pass);
+
+    int payload_len = wifi_len;
+    int record_len = 3 + 1 + payload_len; // Header + TypeLen + PayloadLen + Type('U') + Payload
+    int total_len = 2 + record_len;
+
+    uint8_t ndef_data[256];
+    int pos = 0;
+    ndef_data[pos++] = 0x03;        // TLV Type
+    ndef_data[pos++] = record_len;  // TLV Length
+    ndef_data[pos++] = 0xD1;        // Well-known record
+    ndef_data[pos++] = 0x01;        // Type length
+    ndef_data[pos++] = payload_len; // Payload length
+    ndef_data[pos++] = 0x55;        // Type 'U' (URI)
+    ndef_data[pos++] = 0x00;        // No prefix (manual string)
+
+    for (int i = 0; i < wifi_len; i++) {
+        ndef_data[pos++] = wifi_str[i];
+    }
+
     return write_ndef_data(ndef_data, total_len);
 }
 

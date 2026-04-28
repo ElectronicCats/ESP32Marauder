@@ -52,6 +52,7 @@ const char PROGMEM GPS_DATA_CMD[] = "gpsdata";
 const char PROGMEM GPS_CMD[] = "gps";
 const char PROGMEM NMEA_CMD[] = "nmea";
 const char PROGMEM SPIFFS_CMD[] = "spiffs";
+const char PROGMEM INFO_CMD[] = "info";
 
 // WiFi sniff/scan
 const char PROGMEM EVIL_PORTAL_CMD[] = "evilportal";
@@ -111,6 +112,7 @@ const char PROGMEM HELP_GPS_DATA_CMD[] = "gpsdata";
 const char PROGMEM HELP_GPS_CMD[] = "gps [-g] <fix/sat/lon/lat/alt/date/accuracy/text/nmea>\r\n    [-n] <native/all/gps/glonass/galileo/navic/qzss/beidou>\r\n         [-b = use BD vs GB for beidou]";
 const char PROGMEM HELP_NMEA_CMD[] = "nmea";
 const char PROGMEM HELP_SPIFFS_CMD[] = "spiffs [ls/read <file>/rm <file>/format]";
+const char PROGMEM HELP_INFO_CMD[] = "info";
 
 // WiFi sniff/scan
 const char PROGMEM HELP_EVIL_PORTAL_CMD[] = "evilportal [-c start [-w html.html]/sethtml <html.html>]";

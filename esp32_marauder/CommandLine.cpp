@@ -225,10 +225,13 @@ void CommandLine::runCommand(String input) {
     Serial.println(HELP_REBOOT_CMD);
     Serial.println(HELP_UPDATE_CMD_A);
     Serial.println(HELP_LS_CMD);
-    Serial.println(HELP_LED_CMD);
+    #ifdef HAS_NEOPIXEL_LED
+      Serial.println(HELP_LED_CMD);
+    #endif
     Serial.println(HELP_GPS_DATA_CMD);
     Serial.println(HELP_GPS_CMD);
     Serial.println(HELP_NMEA_CMD);
+    Serial.println(HELP_INFO_CMD);
     
     // WiFi sniff/scan
     Serial.println(HELP_EVIL_PORTAL_CMD);
@@ -420,6 +423,30 @@ void CommandLine::runCommand(String input) {
       Serial.println("GPS Not Supported");
     #endif
   }
+  // info command
+  else if (cmd_args.get(0) == INFO_CMD) {
+    Serial.println("Version: " + version_number);
+    Serial.println("Board: " + board_target);
+    String features = "Features: ";
+    #ifdef HAS_BT
+      features += "BT,";
+    #endif
+    #ifdef HAS_NFC
+      features += "NFC,";
+    #endif
+    #ifdef HAS_GPS
+      features += "GPS,";
+    #endif
+    #ifdef HAS_NEOPIXEL_LED
+      features += "LED,";
+    #endif
+    #ifdef HAS_SD
+      features += "SD,";
+    #endif
+    if (features.endsWith(",")) features.remove(features.length() - 1);
+    Serial.println(features);
+  }
+
   else if (cmd_args.get(0) == SPIFFS_CMD) {
     String sub = cmd_args.get(1);
     if (sub == "ls") {
@@ -485,18 +512,23 @@ void CommandLine::runCommand(String input) {
   }
   // LED command
   else if (cmd_args.get(0) == LED_CMD) {
-    int hex_arg = this->argSearch(&cmd_args, "-s");
-    int pat_arg = this->argSearch(&cmd_args, "-p");
-    #ifdef PIN
-      if (hex_arg != -1) {
-        String hexstring = cmd_args.get(hex_arg + 1);
-        int number = (int)strtol(&hexstring[1], NULL, 16);
-        int r = number >> 16;
-        int g = number >> 8 & 0xFF;
-        int b = number & 0xFF;
-        //Serial.println(r);
-        //Serial.println(g);
-        //Serial.println(b);
+    #ifdef HAS_NEOPIXEL_LED
+      // Search for color set arg
+      int cl_set = this->argSearch(&cmd_args, "-s");
+      int pat_arg = this->argSearch(&cmd_args, "-p");
+      
+      if (cmd_args.size() == 1) {
+        Serial.println("Current LED mode: " + (String)led_obj.getMode());
+      }
+      else if (cl_set != -1) {
+        String hex_color = cmd_args.get(cl_set + 1);
+        if (hex_color.charAt(0) == '#')
+          hex_color = hex_color.substring(1);
+        
+        int r = (int)strtol(hex_color.substring(0, 2).c_str(), NULL, 16);
+        int g = (int)strtol(hex_color.substring(2, 4).c_str(), NULL, 16);
+        int b = (int)strtol(hex_color.substring(4, 6).c_str(), NULL, 16);
+        
         led_obj.setColor(r, g, b);
         led_obj.setMode(MODE_CUSTOM);
       }
@@ -511,6 +543,8 @@ void CommandLine::runCommand(String input) {
       Serial.println("This hardware does not support neopixel");
     #endif
   }
+
+
   // ls command
   else if (cmd_args.get(0) == LS_CMD) {
     #ifdef HAS_SD
@@ -1115,6 +1149,7 @@ void CommandLine::runCommand(String input) {
       int u_sw = this->argSearch(&cmd_args, "-u");
       int t_sw = this->argSearch(&cmd_args, "-t");
       int v_sw = this->argSearch(&cmd_args, "-v");
+      int w_sw = this->argSearch(&cmd_args, "-w");
 
       if (scan_sw != -1) {
         nfc_obj.deep_scan(); // Perform brute force pin discovery
@@ -1152,8 +1187,24 @@ void CommandLine::runCommand(String input) {
           Serial.println("Invalid vCard format. Use <name,phone,email>");
         }
       }
+      else if (w_sw != -1 && w_sw + 1 < cmd_args.size()) {
+        String wifi = cmd_args.get(w_sw + 1);
+        int comma1 = wifi.indexOf(',');
+        int comma2 = wifi.indexOf(',', comma1 + 1);
+        if (comma1 != -1 && comma2 != -1) {
+          String ssid = wifi.substring(0, comma1);
+          String pass = wifi.substring(comma1 + 1, comma2);
+          String auth = wifi.substring(comma2 + 1);
+          if (nfc_obj.write_ndef_wifi(ssid.c_str(), pass.c_str(), auth.c_str()))
+            Serial.println("NFC_WRITE_SUCCESS: WIFI");
+          else
+            Serial.println("NFC_WRITE_ERROR: WIFI");
+        } else {
+          Serial.println("Invalid WiFi format. Use <ssid,pass,auth>");
+        }
+      }
       else {
-        Serial.println("Usage: nfc [scan] [-u url] [-t text] [-v name,phone,email]");
+        Serial.println("Usage: nfc [scan] [-u url] [-t text] [-v name,phone,email] [-w ssid,pass,auth]");
       }
     }
     // Legacy DragonJar Commands
@@ -1181,6 +1232,23 @@ void CommandLine::runCommand(String input) {
             nfc_obj.write_ndef_vcard(name.c_str(), phone.c_str(), email.c_str());
         } else {
             Serial.println("Invalid VCARD format. Use <Name|Phone|Email>");
+        }
+    }
+    else if (cmd_args.get(0).startsWith("WIFI:")) {
+        String raw = cmd_args.get(0).substring(5);
+        // Format: SSID|Pass|Auth
+        int pipe1 = raw.indexOf('|');
+        int pipe2 = raw.indexOf('|', pipe1 + 1);
+        if (pipe1 != -1 && pipe2 != -1) {
+            String ssid = raw.substring(0, pipe1);
+            String pass = raw.substring(pipe1 + 1, pipe2);
+            String auth = raw.substring(pipe2 + 1);
+            if (nfc_obj.write_ndef_wifi(ssid.c_str(), pass.c_str(), auth.c_str()))
+              Serial.println("NFC_WRITE_SUCCESS: WIFI");
+            else
+              Serial.println("NFC_WRITE_ERROR: WIFI");
+        } else {
+            Serial.println("Invalid WIFI format. Use <SSID|Pass|Auth>");
         }
     }
     #endif
