@@ -190,7 +190,9 @@ void setup()
   while(!Serial)
     delay(10);
 
+#ifndef MARAUDER_FLIPPER_C5
   Serial.println("ESP-IDF version is: " + String(esp_get_idf_version()));
+#endif
 
   #ifdef HAS_SCREEN
     display_obj.RunSetup();
@@ -233,7 +235,9 @@ void setup()
 
         backlightOff();
 
+#ifndef MARAUDER_FLIPPER_C5
         Serial.println("Headless Mode enabled");
+#endif
       }
     #endif
 
@@ -266,7 +270,9 @@ void setup()
         //display_obj.tft.println(F(text_table0[3]));
       #endif
     } else {
+#ifndef MARAUDER_FLIPPER_C5
       Serial.println(F("SD Card NOT Supported"));
+#endif
       #ifdef HAS_SCREEN
         //display_obj.tft.setTextColor(TFT_RED, TFT_BLACK);
         //display_obj.tft.println(F(text_table0[4]));
@@ -339,7 +345,9 @@ void setup()
 
   wifi_scan_obj.StartScan(WIFI_SCAN_OFF);
   
+#ifndef MARAUDER_FLIPPER_C5
   Serial.println(F("CLI Ready"));
+#endif
   cli_obj.RunSetup();
 }
 

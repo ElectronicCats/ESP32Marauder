@@ -62,6 +62,8 @@ class GpsInterface {
     void setAGNSS(bool enabled);
     void setUpdateRate(uint8_t rate_hz); // 1, 5, or 10
     void setConstellations(bool advanced);
+    void setConfigConstellation(String type);
+    void logPOI(String note);
 
     void enqueue(MicroNMEA& nmea);
     LinkedList<nmea_sentence_t>* get_queue();
@@ -117,7 +119,7 @@ class GpsInterface {
     LinkedList<String> *text_in=NULL;
     LinkedList<String> *text=NULL;
 
-    char nmea_buffer[128];
+    char nmea_buffer[256];
     int buffer_pos = 0;
     int sats_in_view = 0;
     int last_sats_viewed = 0;

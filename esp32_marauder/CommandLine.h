@@ -51,6 +51,7 @@ const char PROGMEM LED_CMD[] = "led";
 const char PROGMEM GPS_DATA_CMD[] = "gpsdata";
 const char PROGMEM GPS_CMD[] = "gps";
 const char PROGMEM NMEA_CMD[] = "nmea";
+const char PROGMEM SPIFFS_CMD[] = "spiffs";
 
 // WiFi sniff/scan
 const char PROGMEM EVIL_PORTAL_CMD[] = "evilportal";
@@ -109,6 +110,7 @@ const char PROGMEM HELP_LED_CMD[] = "led -s <hex color>/-p <rainbow>";
 const char PROGMEM HELP_GPS_DATA_CMD[] = "gpsdata";
 const char PROGMEM HELP_GPS_CMD[] = "gps [-g] <fix/sat/lon/lat/alt/date/accuracy/text/nmea>\r\n    [-n] <native/all/gps/glonass/galileo/navic/qzss/beidou>\r\n         [-b = use BD vs GB for beidou]";
 const char PROGMEM HELP_NMEA_CMD[] = "nmea";
+const char PROGMEM HELP_SPIFFS_CMD[] = "spiffs [ls/read <file>/rm <file>/format]";
 
 // WiFi sniff/scan
 const char PROGMEM HELP_EVIL_PORTAL_CMD[] = "evilportal [-c start [-w html.html]/sethtml <html.html>]";
@@ -159,7 +161,6 @@ const char PROGMEM HELP_FOOT[] = "==================================";
 class CommandLine {
   private:
     String getSerialInput();
-    LinkedList<String> parseCommand(String input, char* delim);
     String toLowerCase(String str);
     void filterAccessPoints(String filter);
     void runCommand(String input);
@@ -168,7 +169,6 @@ class CommandLine {
     bool apSelected();
     bool hasSSIDs();
     void showCounts(int selected, int unselected = -1);
-    int argSearch(LinkedList<String>* cmd_args, String key);
 
     const char* ascii_art =
     "\r\n"
@@ -202,6 +202,8 @@ class CommandLine {
 
     void RunSetup();
     void main(uint32_t currentTime);
+    LinkedList<String> parseCommand(String input, char* delim);
+    int argSearch(LinkedList<String>* cmd_args, String key);
 };
 
 #endif

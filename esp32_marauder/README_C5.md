@@ -17,8 +17,10 @@ Es una suite de herramientas de código abierto diseñada para la auditoría de 
 ### 2. Evil Portal
 *   Crea un punto de acceso falso que, al conectarse, redirige al usuario a una página web personalizada (Portal Cautivo) para investigar vulnerabilidades de phishing o recolección de credenciales.
 
-### 3. Herramientas NFC
-*   Integración con el sensor **NT3H2111** para lectura y manipulación de etiquetas NFC mediante bus I2C (Pines 2 y 3).
+### 3. Herramientas NFC (Modo Tarjeta)
+*   **Emulación de Etiqueta**: Utiliza el sensor **NT3H2111** para funcionar como una tarjeta NFC programable (NTAG2k). 
+*   **Capacidad**: **No funciona como lector**. El ESP32 actúa como una etiqueta pasiva que otros dispositivos (móviles, Flipper Zero) pueden leer.
+*   **Uso**: Permite inyectar mensajes NDEF (URLs, Texto o VCards) mediante la CLI para que sean detectados por proximidad.
 
 ## ⚙️ Configuración Específica para C5
 Debido a las particularidades del chip ESP32-C5 ECO1, se han aplicado los siguientes ajustes críticos:

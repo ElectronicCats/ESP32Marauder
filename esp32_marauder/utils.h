@@ -11,6 +11,8 @@ struct mac_addr {
 
 struct Station {
   uint8_t mac[6];
+  uint8_t ap_bssid[6]; // Associated AP
+  uint8_t channel;     // Operating channel
   bool selected;
 };
 

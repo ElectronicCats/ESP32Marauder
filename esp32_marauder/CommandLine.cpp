@@ -115,7 +115,6 @@ bool CommandLine::apSelected() {
     if (access_points->get(i).selected)
       return true;
   }
-
   return false;
 }
 
@@ -280,6 +279,7 @@ void CommandLine::runCommand(String input) {
     #ifdef HAS_NFC
       Serial.println(HELP_NFC_CMD);
     #endif
+    Serial.println(HELP_SPIFFS_CMD);
 
     Serial.println(HELP_FOOT);
     return;
@@ -381,6 +381,7 @@ void CommandLine::runCommand(String input) {
                 nmea_type="beidou_bd";
             }
             gps_obj.setType(nmea_type);
+            gps_obj.setConfigConstellation(nmea_type);
             Serial.println("GPS Output Type Set To: " + nmea_type);
           }
           else
@@ -404,6 +405,83 @@ void CommandLine::runCommand(String input) {
         wifi_scan_obj.StartScan(WIFI_SCAN_GPS_NMEA, TFT_CYAN);
       }
     #endif
+  }
+  else if (cmd_args.get(0) == "gpspoi") {
+    #ifdef HAS_GPS
+      int s_arg = this->argSearch(&cmd_args, "-s");
+      int m_arg = this->argSearch(&cmd_args, "-m");
+      int e_arg = this->argSearch(&cmd_args, "-e");
+
+      if (s_arg != -1) gps_obj.logPOI("Route Started");
+      else if (m_arg != -1) gps_obj.logPOI("Mark");
+      else if (e_arg != -1) gps_obj.logPOI("Route Ended");
+      else Serial.println("Missing flag (-s, -m, -e)");
+    #else
+      Serial.println("GPS Not Supported");
+    #endif
+  }
+  else if (cmd_args.get(0) == SPIFFS_CMD) {
+    String sub = cmd_args.get(1);
+    if (sub == "ls") {
+      File root = SPIFFS.open("/");
+      File file = root.openNextFile();
+      size_t total = 0;
+      while (file) {
+        Serial.print(file.name());
+        Serial.print("\t");
+        Serial.println(file.size());
+        total += file.size();
+        file = root.openNextFile();
+      }
+      Serial.print("Total used: ");
+      Serial.print(total);
+      Serial.print(" / ");
+      Serial.print(SPIFFS.totalBytes());
+      Serial.println(" bytes");
+    }
+    else if (sub == "read") {
+      if (cmd_args.size() > 2) {
+        String path = cmd_args.get(2);
+        if (!path.startsWith("/")) path = "/" + path;
+        if (SPIFFS.exists(path)) {
+          File f = SPIFFS.open(path, "r");
+          Serial.println("[SPIFFS/BEGIN]" + path);
+          while (f.available()) Serial.write(f.read());
+          Serial.println("\r\n[SPIFFS/END]");
+          f.close();
+        } else Serial.println("File not found");
+      }
+    }
+    else if (sub == "dump") {
+      if (cmd_args.size() > 2) {
+        String path = cmd_args.get(2);
+        if (!path.startsWith("/")) path = "/" + path;
+        if (SPIFFS.exists(path)) {
+          File f = SPIFFS.open(path, "r");
+          Serial.println("[SPIFFS/DUMP/BEGIN]" + path);
+          while (f.available()) {
+            uint8_t b = f.read();
+            if (b < 0x10) Serial.print("0");
+            Serial.print(b, HEX);
+          }
+          Serial.println("\r\n[SPIFFS/DUMP/END]");
+          f.close();
+        } else Serial.println("File not found");
+      }
+    }
+    else if (sub == "rm") {
+      if (cmd_args.size() > 2) {
+        String path = cmd_args.get(2);
+        if (!path.startsWith("/")) path = "/" + path;
+        if (SPIFFS.remove(path)) Serial.println("File deleted");
+        else Serial.println("Delete failed");
+      }
+    }
+    else if (sub == "format") {
+      Serial.println("Formatting SPIFFS...");
+      if (SPIFFS.format()) Serial.println("Success");
+      else Serial.println("Failed");
+    }
   }
   // LED command
   else if (cmd_args.get(0) == LED_CMD) {
@@ -628,6 +706,27 @@ void CommandLine::runCommand(String input) {
       #endif
       wifi_scan_obj.StartScan(WIFI_SCAN_RAW_CAPTURE, TFT_WHITE);
     }
+    // Scan alias support
+    else if (cmd_args.get(0) == "scan") {
+      int st_sw = this->argSearch(&cmd_args, "-st");
+      int ap_sw = this->argSearch(&cmd_args, "-ap");
+
+      if (st_sw != -1) {
+        if(access_points->size() < 1) {
+          Serial.println("The AP list is empty. Scan APs first with scan -ap");
+          return;
+        }
+        Serial.println("Starting Station scan (alias). Stop with " + (String)STOPSCAN_CMD);
+        wifi_scan_obj.StartScan(WIFI_SCAN_STATION, TFT_ORANGE);
+      }
+      else if (ap_sw != -1) {
+        Serial.println("Starting AP scan (alias). Stop with " + (String)STOPSCAN_CMD);
+        wifi_scan_obj.StartScan(WIFI_SCAN_TARGET_AP, TFT_MAGENTA);
+      }
+      else {
+        Serial.println("Usage: scan [-ap] [-st]");
+      }
+    }
     // Scan stations
     else if (cmd_args.get(0) == SCANSTA_CMD) {    
       if(access_points->size() < 1)
@@ -756,7 +855,7 @@ void CommandLine::runCommand(String input) {
 
           // Source addr not specified
           if (src_addr_sw == -1) {
-            if (!this->apSelected()) {
+            if ((!this->apSelected()) && (!wifi_scan_obj.stSelected())) {
               Serial.println("You don't have any targets selected. Use " + (String)SEL_CMD);
               return;
             }
@@ -1233,7 +1332,22 @@ void CommandLine::runCommand(String input) {
       }
       this->showCounts(count_selected);
     }
-    // List SSIDs
+    // List SSIDs (C5 uses -s for Stations now)
+    #ifdef MARAUDER_FLIPPER_C5
+    else if (ss_sw != -1) {
+      char sta_mac[] = "00:00:00:00:00:00";
+      char ap_mac[] = "00:00:00:00:00:00";
+      Serial.println("--- DISCOVERED STATIONS (AGGRESSIVE) ---");
+      for (int i = 0; i < stations->size(); i++) {
+        wifi_scan_obj.getMAC(sta_mac, stations->get(i).mac, 0);
+        wifi_scan_obj.getMAC(ap_mac, stations->get(i).ap_bssid, 0);
+        String selected_str = (stations->get(i).selected) ? " (SELECTED)" : "";
+        Serial.println("[" + (String)i + "] STA: " + (String)sta_mac + " -> AP: " + (String)ap_mac + " [CH:" + (String)stations->get(i).channel + "]" + selected_str);
+        if (stations->get(i).selected) count_selected++;
+      }
+      this->showCounts(count_selected);
+    }
+    #else
     else if (ss_sw != -1) {
       for (int i = 0; i < ssids->size(); i++) {
         if (ssids->get(i).selected) {
@@ -1245,25 +1359,35 @@ void CommandLine::runCommand(String input) {
       }
       this->showCounts(count_selected);
     }
-    // List Stations
+    #endif
+    // List Stations (Original Command)
     else if (cl_sw != -1) {
       char sta_mac[] = "00:00:00:00:00:00";
-      for (int x = 0; x < access_points->size(); x++) {
-        Serial.println("[" + (String)x + "] " + access_points->get(x).essid + " " + (String)access_points->get(x).rssi + ":");
-        for (int i = 0; i < access_points->get(x).stations->size(); i++) {
-          wifi_scan_obj.getMAC(sta_mac, stations->get(access_points->get(x).stations->get(i)).mac, 0);
-          if (stations->get(access_points->get(x).stations->get(i)).selected) {
-            Serial.print("  [" + (String)access_points->get(x).stations->get(i) + "] ");
-            Serial.print(sta_mac);
-            Serial.println(" (selected)");
-            count_selected += 1;
-          }
-          else {
-            Serial.print("  [" + (String)access_points->get(x).stations->get(i) + "] ");
-            Serial.println(sta_mac);
+      #ifdef MARAUDER_FLIPPER_C5
+        for (int i = 0; i < stations->size(); i++) {
+          wifi_scan_obj.getMAC(sta_mac, stations->get(i).mac, 0);
+          String selected_str = (stations->get(i).selected) ? " (SELECTED)" : "";
+          Serial.println("[" + (String)i + "] " + (String)sta_mac + selected_str);
+          if (stations->get(i).selected) count_selected++;
+        }
+      #else
+        for (int x = 0; x < access_points->size(); x++) {
+          Serial.println("[" + (String)x + "] " + access_points->get(x).essid + " " + (String)access_points->get(x).rssi + ":");
+          for (int i = 0; i < access_points->get(x).stations->size(); i++) {
+            wifi_scan_obj.getMAC(sta_mac, stations->get(access_points->get(x).stations->get(i)).mac, 0);
+            if (stations->get(access_points->get(x).stations->get(i)).selected) {
+              Serial.print("  [" + (String)access_points->get(x).stations->get(i) + "] ");
+              Serial.print(sta_mac);
+              Serial.println(" (selected)");
+              count_selected += 1;
+            }
+            else {
+              Serial.print("  [" + (String)access_points->get(x).stations->get(i) + "] ");
+              Serial.println(sta_mac);
+            }
           }
         }
-      }
+      #endif
       this->showCounts(count_selected);
     }
     // List airtags
@@ -1396,7 +1520,31 @@ void CommandLine::runCommand(String input) {
         this->showCounts(count_selected, count_unselected);
       }
     }
-    // select ssids
+    // select ssids (C5 uses -s for Stations now)
+    #ifdef MARAUDER_FLIPPER_C5
+    else if (ss_sw != -1) {
+      LinkedList<String> sta_index = this->parseCommand(cmd_args.get(ss_sw + 1), ",");
+      if (cmd_args.get(ss_sw + 1) == "all") {
+        for (int i = 0; i < stations->size(); i++) {
+          Station new_sta = stations->get(i);
+          new_sta.selected = !new_sta.selected;
+          stations->set(i, new_sta);
+          if (new_sta.selected) count_selected++; else count_unselected++;
+        }
+      } else {
+        for (int i = 0; i < sta_index.size(); i++) {
+          int index = sta_index.get(i).toInt();
+          if (this->inRange(stations->size(), index)) {
+            Station new_sta = stations->get(index);
+            new_sta.selected = !new_sta.selected;
+            stations->set(index, new_sta);
+            if (new_sta.selected) count_selected++; else count_unselected++;
+          } else Serial.println("Index not in range: " + (String)index);
+        }
+      }
+      this->showCounts(count_selected, count_unselected);
+    }
+    #else
     else if (ss_sw != -1) {
       // Get list of indices
       LinkedList<String> ss_index = this->parseCommand(cmd_args.get(ss_sw + 1), ",");
@@ -1425,6 +1573,7 @@ void CommandLine::runCommand(String input) {
       }
       this->showCounts(count_selected, count_unselected);
     }
+    #endif
     else {
       Serial.println("You did not specify which list to select from");
       return;

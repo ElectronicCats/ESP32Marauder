@@ -6,7 +6,7 @@
 #include "configs.h"
 
 #ifdef MARAUDER_FLIPPER_C5
-  #define MARAUDER_IF WIFI_IF_AP
+  #define MARAUDER_IF WIFI_IF_STA
 #else
   #define MARAUDER_IF WIFI_IF_AP
 #endif
@@ -214,7 +214,7 @@ class WiFiScan
     void initWiFi(uint8_t scan_mode);
     uint8_t bluetoothScanTime = 5;
     int packets_sent = 0;
-    const wifi_promiscuous_filter_t filt = {.filter_mask=WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA};
+    const wifi_promiscuous_filter_t filt = {.filter_mask= 0xFFFFFFFF}; // Broad capture for C5 support
     #ifdef HAS_BT
       NimBLEScan* pBLEScan;
     #endif
@@ -403,23 +403,22 @@ class WiFiScan
     int clearAirtags();
     int clearFlippers();
     int clearStations();
+    void RunClearStations();
     bool addSSID(String essid);
     int generateSSIDs(int count = 20);
     bool shutdownWiFi();
     bool shutdownBLE();
     bool scanning();
-    //void joinWiFi(String ssid, String password);
     String getStaMAC();
     String getApMAC();
     String freeRAM();
     void changeChannel();
     void changeChannel(int chan);
     void RunInfo();
-    //void RunShutdownBLE();
     void RunGenerateSSIDs(int count = 20);
     void RunClearSSIDs();
     void RunClearAPs();
-    void RunClearStations();
+    bool stSelected();
     void RunSaveSSIDList(bool save_as = true);
     void RunLoadSSIDList();
     void RunSaveAPList(bool save_as = true);
