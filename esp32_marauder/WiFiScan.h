@@ -319,6 +319,7 @@ class WiFiScan
     void save_mac(unsigned char* mac);
     void clearMacHistory();
     void executeWarDrive();
+    void parseBSSID(const char* bssidStr, uint8_t* bssid);
     void executeSourApple();
     void executeSpoofAirtag();
     void executeSwiftpairSpam(EBLEPayloadType type);
@@ -363,11 +364,11 @@ class WiFiScan
     void RunLvJoinWiFi(uint8_t scan_mode, uint16_t color);
     void RunEvilPortal(uint8_t scan_mode, uint16_t color);
     bool checkMem();
-    void parseBSSID(const char* bssidStr, uint8_t* bssid);
 
 
   public:
     WiFiScan();
+
 
     //AccessPoint ap_list;
 

