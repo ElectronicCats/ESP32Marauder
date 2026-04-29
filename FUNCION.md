@@ -16,72 +16,7 @@ Esta guía detalla la instalación, configuración y modificación de hardware p
 
 ---
 
-## 📋 1. Requerimientos de Software
-
-Antes de empezar, debes descargar e instalar las siguientes herramientas:
-
-### A. Para el Firmware (Arduino)
-1.  **Arduino IDE**: Descarga la versión 2.3.0 o superior desde [arduino.cc](https://www.arduino.cc/en/software).
-2.  **Core ESP32**: 
-    *   En Arduino IDE, ve a `File` -> `Preferences`.
-    *   En "Additional Boards Manager URLs", pega: `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
-    *   Ve a `Tools` -> `Board` -> `Boards Manager`, busca **esp32** e instala la versión **3.3.7**.
-3.  **Librerías Necesarias**: Instala estas librerías desde el `Library Manager` (Ctrl+Shift+I):
-    *   `NimBLE-Arduino` (Versión 1.4.1 o superior).
-    *   `LinkedList` (por Ivan Seidel).
-    *   `ArduinoJson` (Versión 7.x).
-    *   `MicroNMEA` (Para el GPS).
-
-### B. Para el Dashboard (Interfaz Web)
-1.  **Node.js**: Descarga e instala la versión **LTS** desde [nodejs.org](https://nodejs.org/). Esto instalará automáticamente `npm`.
-
----
-
-## 🛰️ 2. Guía de Hardware: Instalación de GPS (NEO-6M V2)
-
-Muchos badges de Marauder C5 vienen sin GPS interno. Si tu placa tiene los pines expuestos (3.3V, GND, RX, TX), sigue estos pasos para instalar un módulo **u-blox NEO-6M V2**.
-
-### Identificación de Pines en el Badge
-Busca en tu placa la fila de 4 pads o agujeros marcados. Si no tienen marcas, la disposición estándar suele ser:
-1.  **3.3V** (Alimentación)
-2.  **GND** (Tierra)
-3.  **RX** (Recepción de datos del ESP32)
-4.  **TX** (Transmisión de datos al ESP32)
-
-### Conexión Cruzada (¡IMPORTANTE!)
-La conexión de datos debe ser cruzada para que el GPS pueda "hablar" con el ESP32:
-
-| Pin Módulo GPS | Pin en el Badge | Nota |
-| :--- | :--- | :--- |
-| **VCC** | **3.3V** | No usar 5V, podrías quemar el Badge. |
-| **GND** | **GND** | Conexión a tierra. |
-| **TX** | **RX** | El TX del GPS envía los datos al RX del ESP32. |
-| **RX** | **TX** | El ESP32 envía comandos de configuración al GPS. |
-
-**Consejo de Soldadura:** Usa cables cortos para evitar interferencias electromagnéticas con la antena WiFi/BT del ESP32-C5.
-
----
-
-## 🛠️ 3. Configuración del Firmware
-
-1.  Abre el archivo `esp32_marauder.ino` en Arduino IDE.
-2.  Ve a la pestaña `configs.h`.
-3.  Busca la sección `#define MARAUDER_FLIPPER_C5` (o el nombre de tu hardware específico) y asegúrate de que esté descomentado.
-4.  Verifica los pines del GPS:
-    ```cpp
-    #define GPS_RX 4  // Verifica que coincida con el pad RX de tu placa
-    #define GPS_TX 5  // Verifica que coincida con el pad TX de tu placa
-    ```
-5.  En el menú **Tools**, selecciona:
-    *   **Board**: "ESP32-C5 Dev Module"
-    *   **USB CDC On Boot**: "Enabled"
-    *   **Core Debug Level**: "None" (Fundamental para estabilidad).
-    *   **Flash Mode**: "DIO"
-6.  Conecta tu Badge por USB y presiona **Upload**.
-
----
-
-## 💻 4. Inicialización del Dashboard (UI Pro)
+## 💻 1. Inicialización del Dashboard (UI Pro)
 
 El Dashboard es una aplicación web moderna que permite controlar el dispositivo visualmente.
 
@@ -103,7 +38,26 @@ El Dashboard es una aplicación web moderna que permite controlar el dispositivo
 
 ---
 
-## ⚔️ 5. Operación y Ataques
+## 🛠️ 2. Configuración del Firmware
+
+1.  Abre el archivo `esp32_marauder.ino` en Arduino IDE.
+2.  Ve a la pestaña `configs.h`.
+3.  Busca la sección `#define MARAUDER_FLIPPER_C5` (o el nombre de tu hardware específico) y asegúrate de que esté descomentado.
+4.  Verifica los pines del GPS:
+    ```cpp
+    #define GPS_RX 4  // Verifica que coincida con el pad RX de tu placa
+    #define GPS_TX 5  // Verifica que coincida con el pad TX de tu placa
+    ```
+5.  En el menú **Tools**, selecciona:
+    *   **Board**: "ESP32-C5 Dev Module"
+    *   **USB CDC On Boot**: "Enabled"
+    *   **Core Debug Level**: "None" (Fundamental para estabilidad).
+    *   **Flash Mode**: "DIO"
+6.  Conecta tu Badge por USB y presiona **Upload**.
+
+---
+
+## ⚔️ 3. Operación y Ataques
 
 ### Bluetooth Spam (Optimizado para C5)
 Esta versión es ultra-estable y no requiere reiniciar el dispositivo.
@@ -117,15 +71,7 @@ Esta versión es ultra-estable y no requiere reiniciar el dispositivo.
 
 ---
 
-## 🆘 Solución de Problemas Comunes
-
-*   **El GPS no da señal**: El módulo NEO-6M necesita ver el cielo. Si estás en interiores, acércalo a una ventana. El primer "Fix" puede tardar hasta 10 minutos.
-*   **Error al conectar el Dashboard**: Asegúrate de que el Monitor Serie de Arduino IDE esté **CERRADO**, ya que solo una aplicación puede usar el puerto COM a la vez.
-*   **El Dashboard no carga**: Verifica que ejecutaste `npm install` correctamente y que no hay errores en la terminal.
-
----
-
-## 🖥️ 6. Guía Operativa: Marauder UI Pro
+## 🖥️ 4. Guía Operativa: Marauder UI Pro
 
 El Dashboard está dividido en módulos tácticos. Aquí explicamos qué hace cada uno y cómo usarlos en una operación real.
 
@@ -154,7 +100,7 @@ Este proceso combina el GPS con el escaneo de radio para crear mapas de calor.
 *Durante el Wardriving, el Dashboard muestra los dispositivos capturados en tiempo real sobre un mapa global.*
 
 1.  **Activación GPS**: Ve a la pestaña GPS y asegúrate de tener "Good Fix" (LED Verde).
-2.  **Inicio de Escaneo**: Selecciona "BT Wardrive" o "WiFi Wardrive".
+2.  **Inicio de Escaneo**: Selecciona "WiFi Wardrive".
 3.  **Mapeo en Vivo**: Abre la pestaña **Map**. Verás cómo aparecen iconos en el mapa cada vez que se detecta un dispositivo.
 4.  **Guardado**: Al terminar, usa `stopscan`. El log se guardará en la SD con formato compatible con Wigle.net.
 
@@ -177,7 +123,7 @@ La UI Pro incluye una lista de flujos de trabajo automatizados para simplificar 
 
 ---
 
-## ⌨️ 7. Mapeo de Comandos e Interfaz
+## ⌨️ 5. Mapeo de Comandos e Interfaz
 
 La UI traduce tus clics en estos comandos automáticos. Conocerlos te permite ser más rápido:
 
@@ -185,11 +131,63 @@ La UI traduce tus clics en estos comandos automáticos. Conocerlos te permite se
 | :--- | :--- | :--- |
 | **Start Apple Spam** | `blespam -t apple` | Inundar iPhones con pop-ups de conexión. |
 | **Start Windows Spam** | `blespam -t windows` | Activar "Swift Pair" en laptops cercanas. |
-| **Start Wardriving** | `btwardrive` | Mapeo geográfico de dispositivos Bluetooth. |
+| **Start Wardriving** | `wardrive -serial` | Mapeo geográfico de dispositivos WiFi. |
 | **Stop Activity** | `stopscan` | Detener cualquier proceso de radio de inmediato. |
 | **Clear Terminal** | `clear` | Limpiar la pantalla de la consola. |
 | **List Files** | `ls` | Ver botines capturados (credenciales/pcaps). |
 | **GPS Status** | `gpsdata` | Verificar la salud de la antena NEO-6M. |
+
+---
+## 📋 6. Requerimientos de Software
+
+Antes de empezar, debes descargar e instalar las siguientes herramientas:
+
+### A. Para el Firmware (Arduino)
+1.  **Arduino IDE**: Descarga la versión 2.3.0 o superior desde [arduino.cc](https://www.arduino.cc/en/software).
+2.  **Core ESP32**: 
+    *   En Arduino IDE, ve a `File` -> `Preferences`.
+    *   En "Additional Boards Manager URLs", pega: `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
+    *   Ve a `Tools` -> `Board` -> `Boards Manager`, busca **esp32** e instala la versión **3.3.7**.
+3.  **Librerías Necesarias**: Instala estas librerías desde el `Library Manager` (Ctrl+Shift+I):
+    *   `NimBLE-Arduino` (Versión 1.4.1 o superior).
+    *   `LinkedList` (por Ivan Seidel).
+    *   `ArduinoJson` (Versión 7.x).
+    *   `MicroNMEA` (Para el GPS).
+
+### B. Para el Dashboard (Interfaz Web)
+1.  **Node.js**: Descarga e instala la versión **LTS** desde [nodejs.org](https://nodejs.org/). Esto instalará automáticamente `npm`.
+
+---
+## 🛰️ 7. Guía de Hardware: Instalación de GPS (NEO-6M V2)
+
+Muchos badges de Marauder C5 vienen sin GPS interno. Si tu placa tiene los pines expuestos (3.3V, GND, RX, TX), sigue estos pasos para instalar un módulo **u-blox NEO-6M V2**.
+
+### Identificación de Pines en el Badge
+Busca en tu placa la fila de 4 pads o agujeros marcados. Si no tienen marcas, la disposición estándar suele ser:
+1.  **3.3V** (Alimentación)
+2.  **GND** (Tierra)
+3.  **RX** (Recepción de datos del ESP32)
+4.  **TX** (Transmisión de datos al ESP32)
+
+### Conexión Cruzada (¡IMPORTANTE!)
+La conexión de datos debe ser cruzada para que el GPS pueda "hablar" con el ESP32:
+
+| Pin Módulo GPS | Pin en el Badge | Nota |
+| :--- | :--- | :--- |
+| **VCC** | **3.3V** | No usar 5V, podrías quemar el Badge. |
+| **GND** | **GND** | Conexión a tierra. |
+| **TX** | **RX** | El TX del GPS envía los datos al RX del ESP32. |
+| **RX** | **TX** | El ESP32 envía comandos de configuración al GPS. |
+
+**Consejo de Soldadura:** Usa cables cortos para evitar interferencias electromagnéticas con la antena WiFi/BT del ESP32-C5.
+
+---
+
+## 🆘 Solución de Problemas Comunes
+
+*   **El GPS no da señal**: El módulo NEO-6M necesita ver el cielo. Si estás en interiores, acércalo a una ventana. El primer "Fix" puede tardar hasta 10 minutos.
+*   **Error al conectar el Dashboard**: Asegúrate de que el Monitor Serie de Arduino IDE esté **CERRADO**, ya que solo una aplicación puede usar el puerto COM a la vez.
+*   **El Dashboard no carga**: Verifica que ejecutaste `npm install` correctamente y que no hay errores en la terminal.
 
 ---
 
