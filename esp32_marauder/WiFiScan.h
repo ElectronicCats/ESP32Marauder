@@ -4,6 +4,12 @@
 #define WiFiScan_h
 
 #include "configs.h"
+
+#ifdef MARAUDER_FLIPPER_C5
+  #define MARAUDER_IF WIFI_IF_STA
+#else
+  #define MARAUDER_IF WIFI_IF_AP
+#endif
 #include "utils.h"
 
 #include <ArduinoJson.h>
@@ -19,6 +25,7 @@
 #include <math.h>
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
+#include "esp_mac.h"
 #ifdef HAS_BT
   #include "esp_bt.h"
 #endif
@@ -207,7 +214,7 @@ class WiFiScan
     void initWiFi(uint8_t scan_mode);
     uint8_t bluetoothScanTime = 5;
     int packets_sent = 0;
-    const wifi_promiscuous_filter_t filt = {.filter_mask=WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA};
+    const wifi_promiscuous_filter_t filt = {.filter_mask= 0xFFFFFFFF}; // Broad capture for C5 support
     #ifdef HAS_BT
       NimBLEScan* pBLEScan;
     #endif
@@ -267,6 +274,8 @@ class WiFiScan
                                   /* SSID */
                                   };
 
+    // Standard deauth frame (0xC0). NOTE: ESP32-C5 with ESP-IDF v5.x
+    // blocks this at firmware level - deauth attacks are not supported on C5.
     uint8_t deauth_frame_default[26] = {
                               0xc0, 0x00, 0x3a, 0x01,
                               0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -310,6 +319,7 @@ class WiFiScan
     void save_mac(unsigned char* mac);
     void clearMacHistory();
     void executeWarDrive();
+    void parseBSSID(const char* bssidStr, uint8_t* bssid);
     void executeSourApple();
     void executeSpoofAirtag();
     void executeSwiftpairSpam(EBLEPayloadType type);
@@ -354,11 +364,11 @@ class WiFiScan
     void RunLvJoinWiFi(uint8_t scan_mode, uint16_t color);
     void RunEvilPortal(uint8_t scan_mode, uint16_t color);
     bool checkMem();
-    void parseBSSID(const char* bssidStr, uint8_t* bssid);
 
 
   public:
     WiFiScan();
+
 
     //AccessPoint ap_list;
 
@@ -394,23 +404,22 @@ class WiFiScan
     int clearAirtags();
     int clearFlippers();
     int clearStations();
+    void RunClearStations();
     bool addSSID(String essid);
     int generateSSIDs(int count = 20);
     bool shutdownWiFi();
     bool shutdownBLE();
     bool scanning();
-    //void joinWiFi(String ssid, String password);
     String getStaMAC();
     String getApMAC();
     String freeRAM();
     void changeChannel();
     void changeChannel(int chan);
     void RunInfo();
-    //void RunShutdownBLE();
     void RunGenerateSSIDs(int count = 20);
     void RunClearSSIDs();
     void RunClearAPs();
-    void RunClearStations();
+    bool stSelected();
     void RunSaveSSIDList(bool save_as = true);
     void RunLoadSSIDList();
     void RunSaveAPList(bool save_as = true);

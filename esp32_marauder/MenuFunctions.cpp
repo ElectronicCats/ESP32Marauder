@@ -1375,6 +1375,9 @@ void MenuFunctions::RunSetup()
   // Main menu stuff
   wifiMenu.list = new LinkedList<MenuNode>(); // Get list in second menu ready
   bluetoothMenu.list = new LinkedList<MenuNode>(); // Get list in third menu ready
+  #ifdef HAS_NFC
+    nfcMenu.list = new LinkedList<MenuNode>();
+  #endif
   deviceMenu.list = new LinkedList<MenuNode>();
   #ifdef HAS_GPS
     if (gps_obj.getGpsModuleStatus()) {
@@ -1449,6 +1452,9 @@ void MenuFunctions::RunSetup()
   infoMenu.name = text_table1[17];
   settingsMenu.name = text_table1[18];
   bluetoothMenu.name = text_table1[19];
+  #ifdef HAS_NFC
+    nfcMenu.name = "NFC";
+  #endif
   wifiSnifferMenu.name = text_table1[20];
   wifiAttackMenu.name = text_table1[21];
   wifiGeneralMenu.name = text_table1[22];
@@ -1494,12 +1500,40 @@ void MenuFunctions::RunSetup()
   this->addNodes(&mainMenu, text_table1[19], TFT_CYAN, NULL, BLUETOOTH, [this]() {
     this->changeMenu(&bluetoothMenu);
   });
+  #ifdef HAS_NFC
+    this->addNodes(&mainMenu, "NFC Target", TFT_ORANGE, NULL, BLANK, [this]() {
+      this->changeMenu(&nfcMenu);
+    });
+  #endif
   this->addNodes(&mainMenu, text_table1[9], TFT_BLUE, NULL, DEVICE, [this]() {
     this->changeMenu(&deviceMenu);
   });
   this->addNodes(&mainMenu, text_table1[30], TFT_LIGHTGREY, NULL, REBOOT, []() {
     ESP.restart();
   });
+
+  #ifdef HAS_NFC
+    // Build NFC Menu
+    nfcMenu.parentMenu = &mainMenu;
+    this->addNodes(&nfcMenu, text09, TFT_LIGHTGREY, NULL, 0, [this]() {
+      this->changeMenu(nfcMenu.parentMenu);
+    });
+    this->addNodes(&nfcMenu, "Write URI", TFT_GREEN, NULL, BLANK, [this]() {
+      // In a real device with keyboard, we might prompt. Here we just set a default for demo.
+      nfc_obj.write_ndef_uri("https://marauder.com");
+      display_obj.clearScreen();
+      display_obj.tft.drawString("NFC URI Set", 0, 0, 2);
+      delay(2000);
+      this->changeMenu(current_menu);
+    });
+    this->addNodes(&nfcMenu, "Write Text", TFT_YELLOW, NULL, BLANK, [this]() {
+      nfc_obj.write_ndef_text("Marauder NFC");
+      display_obj.clearScreen();
+      display_obj.tft.drawString("NFC Text Set", 0, 0, 2);
+      delay(2000);
+      this->changeMenu(current_menu);
+    });
+  #endif
 
   // Build WiFi Menu
   wifiMenu.parentMenu = &mainMenu; // Main Menu is second menu parent

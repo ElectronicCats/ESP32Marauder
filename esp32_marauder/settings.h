@@ -23,6 +23,7 @@ class Settings {
     String json_settings_string;
 
   public:
+    Settings();
     bool begin();
 
     template <typename T>

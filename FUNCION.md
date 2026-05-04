@@ -1,4 +1,3 @@
-[FUNCION.md](https://github.com/user-attachments/files/27213160/FUNCION.md)
 # 🛡️ PWNTERREY- Guía Completa
 
 Esta guía detalla la instalación, configuración y modificación de hardware para el ecosistema **Marauder ESP32-C5** y su **UI Pro Dashboard**.

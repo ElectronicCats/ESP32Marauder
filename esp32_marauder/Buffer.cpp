@@ -1,7 +1,10 @@
 #include "Buffer.h"
 #include "lang_var.h"
 
+extern "C" int ets_printf(const char *fmt, ...);
+
 Buffer::Buffer(){
+  ets_printf("[CONSTRUCTOR] Buffer\n");
   bufA = (uint8_t*)malloc(BUF_SIZE);
   bufB = (uint8_t*)malloc(BUF_SIZE);
 }
@@ -21,7 +24,9 @@ void Buffer::createFile(String name, bool is_pcap){
     } while(fs->exists(fileName));
   }
 
+#ifndef MARAUDER_FLIPPER_C5
   Serial.println(fileName);
+#endif
   
   file = fs->open(fileName, FILE_WRITE);
   file.close();
@@ -160,7 +165,9 @@ void Buffer::write(const uint8_t* buf, uint32_t len){
 void Buffer::saveFs(){
   file = fs->open(fileName, FILE_APPEND);
   if (!file) {
+#ifndef MARAUDER_FLIPPER_C5
     Serial.println(text02+fileName+"'");
+#endif
     return;
   }
 

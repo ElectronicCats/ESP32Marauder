@@ -4,7 +4,7 @@
 
   #define configs_h
 
-  #define POLISH_POTATO
+  //#define POLISH_POTATO
 
   //// BOARD TARGETS
   //#define MARAUDER_M5STICKC 
@@ -22,9 +22,10 @@
   //#define XIAO_ESP32_S3
   //#define MARAUDER_REV_FEATHER
   //#define MARAUDER_ELECTRONICCATS3
+  #define MARAUDER_FLIPPER_C5
   //// END BOARD TARGETS
 
-  #define MARAUDER_VERSION "v1.2.1"
+  #define MARAUDER_VERSION "v1.2.1-GPS-REPAIRED"
 
   //// HARDWARE NAMES
   #ifdef MARAUDER_M5STICKC
@@ -55,6 +56,8 @@
     #define HARDWARE_NAME "XIAO ESP32 S3"
   #elif defined(MARAUDER_ELECTRONICCATS3)
     #define HARDWARE_NAME "Marauder Electronic Cat S3"
+  #elif defined(MARAUDER_FLIPPER_C5)
+    #define HARDWARE_NAME "Flipper C5 Addon"
   #else
     #define HARDWARE_NAME "ESP32"
   #endif
@@ -249,6 +252,30 @@
   //#define HAS_SD
   //#define HAS_TEMP_SENSOR
   //#define HAS_GPS
+  #endif
+
+  #ifdef MARAUDER_FLIPPER_C5
+    #define HAS_BT       // ESP32-C5 has BLE 5.0 built-in
+    #define HAS_NFC
+    #define NFC_SDA 2    // GPIO 2 (Pin 4)
+    #define NFC_SCL 3    // GPIO 3 (Pin 5)
+    #define NFC_FD 6     // GPIO 6 (Pin 8)
+    #define HAS_GPS
+    #define GPS_TX 4     // MCU TX -> GPS RX
+    #define GPS_RX 5     // MCU RX <- GPS TX
+    #define GPS_SERIAL_INDEX 1
+    #define GPS_ON_PIN 7
+    #define SD_CS -1
+    #define TFT_CS -1
+    #define TFT_BL -1
+    #define BATTERY_PIN -1
+    #define CHARGING_PIN -1
+    #define L_BTN -1
+    #define C_BTN -1
+    #define U_BTN -1
+    #define R_BTN -1
+    #define D_BTN -1
+    #define PIN -1
   #endif
   //// END BOARD FEATURES
 
@@ -799,6 +826,18 @@
       #ifndef TFT_HEIGHT
         #define TFT_HEIGHT 128
       #endif
+    #endif
+
+    #ifdef MARAUDER_ESP32_C5_OLED
+      // Basic mock setup for 128x32 OLED
+      #ifndef TFT_WIDTH
+        #define TFT_WIDTH 128
+      #endif
+      #ifndef TFT_HEIGHT
+        #define TFT_HEIGHT 32
+      #endif
+      #define BANNER_TEXT_SIZE 1
+    #endif
 
       #define CHAR_WIDTH 6
       #define SCREEN_WIDTH TFT_WIDTH // Originally 240
@@ -839,7 +878,6 @@
       #define GREENBUTTON_H FRAME_H
     
       #define STATUSBAR_COLOR 0x4A49
-    #endif
 
     #ifdef MARAUDER_REV_FEATHER
       #define SCREEN_CHAR_WIDTH 40
@@ -1151,6 +1189,8 @@
     #define MEM_LOWER_LIM 20000
   #elif defined(MARAUDER_ELECTRONICCATS3)
     #define MEM_LOWER_LIM 20000
+  #elif defined(MARAUDER_FLIPPER_C5)
+    #define MEM_LOWER_LIM 20000
   #endif
   //// END MEMORY LOWER LIMIT STUFF
 
@@ -1246,6 +1286,8 @@
       #define GPS_SERIAL_INDEX 1
       #define GPS_TX 6
       #define GPS_RX 9
+      #define mac_history_len 512
+    #elif defined(MARAUDER_FLIPPER_C5)
       #define mac_history_len 512
     #endif
   #else

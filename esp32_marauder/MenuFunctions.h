@@ -173,6 +173,10 @@ class MenuFunctions
     // Settings things menus
     Menu generateSSIDsMenu;
 
+    #ifdef HAS_NFC
+      Menu nfcMenu;
+    #endif
+
     static void lv_tick_handler();
 
     // Menu icons
