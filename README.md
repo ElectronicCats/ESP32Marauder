@@ -221,8 +221,8 @@ Al realizar escaneos de alta intensidad (como Bluetooth Wardriving), la radio pu
 *   **El Dashboard no carga**: Verifica que ejecutaste `npm install` correctamente y que no hay errores en la terminal.
 
 ---
-Para poder usar de manera eficiente y sin problemas ve a: https://github.com/ElectronicCats/marauder-ui-pro  
-Para observar el Hardware ve a: https://github.com/ElectronicCats/badge-pwnterrey-2026
+[Para poder usar de manera eficiente y sin problemas ve a]: https://github.com/ElectronicCats/marauder-ui-pro  
+[Para observar el Hardware ve a]: https://github.com/ElectronicCats/badge-pwnterrey-2026
 ---
 **Desarrollado para la comunidad de Seguridad Ofensiva.** 💀  
 **created by ElectronicCats** 😼
