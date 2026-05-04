@@ -1,4 +1,5 @@
 [FUNCION.md](https://github.com/user-attachments/files/27213160/FUNCION.md)
+
 # 🛡️ PWNTERREY- Guía Completa
 
 Esta guía detalla la instalación, configuración y modificación de hardware para el ecosistema **Marauder ESP32-C5** y su **UI Pro Dashboard**.
@@ -219,6 +220,9 @@ Al realizar escaneos de alta intensidad (como Bluetooth Wardriving), la radio pu
 *   **Error al conectar el Dashboard**: Asegúrate de que el Monitor Serie de Arduino IDE esté **CERRADO**, ya que solo una aplicación puede usar el puerto COM a la vez.
 *   **El Dashboard no carga**: Verifica que ejecutaste `npm install` correctamente y que no hay errores en la terminal.
 
+---
+Para poder usar de manera eficiente y sin problemas ve a: https://github.com/ElectronicCats/marauder-ui-pro  
+Para observar el Hardware ve a: https://github.com/ElectronicCats/badge-pwnterrey-2026
 ---
 **Desarrollado para la comunidad de Seguridad Ofensiva.** 💀  
 **created by ElectronicCats** 😼
