@@ -40,6 +40,7 @@ class GpsInterface {
     void main();
 
     int getNumSats();
+    int getSatsInView();
     String getNumSatsString();
     bool getFixStatus();
     String getFixStatusAsString();

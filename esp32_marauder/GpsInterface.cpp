@@ -502,56 +502,69 @@ String GpsInterface::generateGXgga() {
     int h = (int)nmea.getHour();
     int m = (int)nmea.getMinute();
     int s = (int)nmea.getSecond();
-    if (h > 23 || m > 59 || s > 59) { h=0; m=0; s=0; }
+    if (h > 23 || m > 59 || s > 59) {
+      h = 0;
+      m = 0;
+      s = 0;
+    }
     snprintf(timeStr, 11, "%02d%02d%02d,", h, m, s);
   }
 
   String latStr, lonStr, latDir, lonDir;
   if (nmea.isValid() || this->coords_synced) {
-    long lat = (nmea.isValid()) ? nmea.getLatitude() : (long)(this->last_lat.toFloat() * 1000000);
+    long lat = (nmea.isValid()) ? nmea.getLatitude()
+                                : (long)(this->last_lat.toFloat() * 1000000);
     latDir = lat < 0 ? 'S' : 'N';
     lat = abs(lat);
     char lBuf[12];
-    snprintf(lBuf, 12, "%02ld%08.5f,", lat / 1000000, ((lat % 1000000)*60) / 1000000.0);
+    snprintf(lBuf, 12, "%02ld%08.5f,", lat / 1000000,
+             ((lat % 1000000) * 60) / 1000000.0);
     latStr = String(lBuf);
 
-    long lon = (nmea.isValid()) ? nmea.getLongitude() : (long)(this->last_lon.toFloat() * 1000000);
+    long lon = (nmea.isValid()) ? nmea.getLongitude()
+                                : (long)(this->last_lon.toFloat() * 1000000);
     lonDir = lon < 0 ? 'W' : 'E';
     lon = abs(lon);
     char lnBuf[13];
-    snprintf(lnBuf, 13, "%03ld%08.5f,", lon / 1000000, ((lon % 1000000)*60) / 1000000.0);
+    snprintf(lnBuf, 13, "%03ld%08.5f,", lon / 1000000,
+             ((lon % 1000000) * 60) / 1000000.0);
     lonStr = String(lnBuf);
   } else {
-    latStr = "0000.00000,"; latDir = "N";
-    lonStr = "00000.00000,"; lonDir = "E";
+    latStr = "0000.00000,";
+    latDir = "N";
+    lonStr = "00000.00000,";
+    lonDir = "E";
   }
 
   int fixQuality = (this->coords_synced || nmea.isValid()) ? 1 : 0;
   char fixStr[3];
   snprintf(fixStr, 3, "%01d,", fixQuality);
 
-  int numSatellites = (nmea.getNumSatellites() > 0) ? nmea.getNumSatellites() : this->last_sats_viewed;
+  int numSatellites = (nmea.getNumSatellites() > 0) ? nmea.getNumSatellites()
+                                                    : this->last_sats_viewed;
   char satStr[4];
   snprintf(satStr, 4, "%02d,", numSatellites);
 
   unsigned long hdop = nmea.getHDOP();
-  if (hdop == 0 && fixQuality == 1) hdop = 20; 
+  if (hdop == 0 && fixQuality == 1)
+    hdop = 20;
   char hdopStr[13];
-  snprintf(hdopStr, 13, "%01.2f,", 2.5 * (((float)(hdop))/10));
+  snprintf(hdopStr, 13, "%01.2f,", 2.5 * (((float)(hdop)) / 10));
 
   long altitude;
-  if(!nmea.getAltitude(altitude)) altitude = (long)(this->last_alt * 1000);
+  if (!nmea.getAltitude(altitude))
+    altitude = (long)(this->last_alt * 1000);
   char altStr[9];
-  snprintf(altStr, 9, "%01.1f,", altitude/1000.0);
+  snprintf(altStr, 9, "%01.1f,", altitude / 1000.0);
 
-  String message = msg_type + String(timeStr) + latStr + latDir + ',' + lonStr + lonDir +
-                    ',' + fixStr + satStr + hdopStr + altStr + "M,,M,,";
+  String message = msg_type + String(timeStr) + latStr + latDir + ',' + lonStr +
+                   lonDir + ',' + fixStr + satStr + hdopStr + altStr + "M,,M,,";
 
   return message;
 }
 
-String GpsInterface::generateGXrmc(){
-  String msg_type="$"+this->generateType()+"RMC,";
+String GpsInterface::generateGXrmc() {
+  String msg_type = "$" + this->generateType() + "RMC,";
 
   char timeStr[11];
   if (this->time_synced) {
@@ -560,18 +573,23 @@ String GpsInterface::generateGXrmc(){
     int h = (int)nmea.getHour();
     int m = (int)nmea.getMinute();
     int s = (int)nmea.getSecond();
-    if (h > 23 || m > 59 || s > 59) { h=0; m=0; s=0; }
+    if (h > 23 || m > 59 || s > 59) {
+      h = 0;
+      m = 0;
+      s = 0;
+    }
     snprintf(timeStr, 11, "%02d%02d%02d,", h, m, s);
   }
 
   char dateStr[8];
   if (this->time_synced && this->last_datetime_str.length() >= 10) {
-    String y = this->last_datetime_str.substring(2,4);
-    String m = this->last_datetime_str.substring(5,7);
-    String d = this->last_datetime_str.substring(8,10);
+    String y = this->last_datetime_str.substring(2, 4);
+    String m = this->last_datetime_str.substring(5, 7);
+    String d = this->last_datetime_str.substring(8, 10);
     snprintf(dateStr, 8, "%s%s%s,", d.c_str(), m.c_str(), y.c_str());
   } else {
-    snprintf(dateStr, 8, "%02d%02d%02d,", (int)(nmea.getDay()), (int)(nmea.getMonth()), (int)(nmea.getYear()%100));
+    snprintf(dateStr, 8, "%02d%02d%02d,", (int)(nmea.getDay()),
+             (int)(nmea.getMonth()), (int)(nmea.getYear() % 100));
   }
 
   char status = (this->coords_synced || nmea.isValid()) ? 'A' : 'V';
@@ -579,22 +597,28 @@ String GpsInterface::generateGXrmc(){
 
   String latStr, lonStr, latDir, lonDir;
   if (nmea.isValid() || this->coords_synced) {
-    long lat = (nmea.isValid()) ? nmea.getLatitude() : (long)(this->last_lat.toFloat() * 1000000);
+    long lat = (nmea.isValid()) ? nmea.getLatitude()
+                                : (long)(this->last_lat.toFloat() * 1000000);
     latDir = lat < 0 ? 'S' : 'N';
     lat = abs(lat);
     char lBuf[12];
-    snprintf(lBuf, 12, "%02ld%08.5f,", lat / 1000000, ((lat % 1000000)*60) / 1000000.0);
+    snprintf(lBuf, 12, "%02ld%08.5f,", lat / 1000000,
+             ((lat % 1000000) * 60) / 1000000.0);
     latStr = String(lBuf);
 
-    long lon = (nmea.isValid()) ? nmea.getLongitude() : (long)(this->last_lon.toFloat() * 1000000);
+    long lon = (nmea.isValid()) ? nmea.getLongitude()
+                                : (long)(this->last_lon.toFloat() * 1000000);
     lonDir = lon < 0 ? 'W' : 'E';
     lon = abs(lon);
     char lnBuf[13];
-    snprintf(lnBuf, 13, "%03ld%08.5f,", lon / 1000000, ((lon % 1000000)*60) / 1000000.0);
+    snprintf(lnBuf, 13, "%03ld%08.5f,", lon / 1000000,
+             ((lon % 1000000) * 60) / 1000000.0);
     lonStr = String(lnBuf);
   } else {
-    latStr = "0000.00000,"; latDir = "N";
-    lonStr = "00000.00000,"; lonDir = "E";
+    latStr = "0000.00000,";
+    latDir = "N";
+    lonStr = "00000.00000,";
+    lonDir = "E";
   }
 
   char speedStr[8];
@@ -603,62 +627,63 @@ String GpsInterface::generateGXrmc(){
   char courseStr[7];
   snprintf(courseStr, 7, "%01.1f,", nmea.getCourse() / 1000.0);
 
-  String message = msg_type + String(timeStr) + status + ',' + latStr + latDir + ',' +
-                    lonStr + lonDir + ',' + speedStr + courseStr + dateStr + ',' + ',' + mode;
+  String message = msg_type + String(timeStr) + status + ',' + latStr + latDir +
+                   ',' + lonStr + lonDir + ',' + speedStr + courseStr +
+                   dateStr + ',' + ',' + mode;
   return message;
 }
 
-String GpsInterface::generateType(){
-  String msg_type="";
+String GpsInterface::generateType() {
+  String msg_type = "";
 
-  if(this->type_flag == GPSTYPE_NATIVE){ //type_flag=0
-    char system=this->nav_system;
-    if(system)
-      msg_type+=system;
+  if (this->type_flag == GPSTYPE_NATIVE) { // type_flag=0
+    char system = this->nav_system;
+    if (system)
+      msg_type += system;
     else
-      msg_type+='N';
-  }
-  else if(this->type_flag == GPSTYPE_GPS) //type_flag=2
-    msg_type="GP";
-  else if(this->type_flag == GPSTYPE_GLONASS) //type_flag=3
-    msg_type="GL";
-  else if(this->type_flag == GPSTYPE_GALILEO) //type_flag=4
-    msg_type="GA";
-  else if(this->type_flag == GPSTYPE_NAVIC) //type_flag=5
-    msg_type="NI";
-  else if(this->type_flag == GPSTYPE_QZSS) //type_flag=6
-    msg_type="GQ";
-  else if(this->type_flag == GPSTYPE_BEIDOU) //type_flag=7
-    msg_type="BD";
-  else if(this->type_flag == GPSTYPE_BEIDOU_BD){ //type_flag=8
-    msg_type="BD";
-  }
-  else {
-    msg_type="GN";
+      msg_type += 'N';
+  } else if (this->type_flag == GPSTYPE_GPS) // type_flag=2
+    msg_type = "GP";
+  else if (this->type_flag == GPSTYPE_GLONASS) // type_flag=3
+    msg_type = "GL";
+  else if (this->type_flag == GPSTYPE_GALILEO) // type_flag=4
+    msg_type = "GA";
+  else if (this->type_flag == GPSTYPE_NAVIC) // type_flag=5
+    msg_type = "NI";
+  else if (this->type_flag == GPSTYPE_QZSS) // type_flag=6
+    msg_type = "GQ";
+  else if (this->type_flag == GPSTYPE_BEIDOU) // type_flag=7
+    msg_type = "BD";
+  else if (this->type_flag == GPSTYPE_BEIDOU_BD) { // type_flag=8
+    msg_type = "BD";
+  } else {
+    msg_type = "GN";
   }
 
   return msg_type;
 }
 
-uint8_t GpsInterface::calculateChecksum(const char* sentence) {
-    uint8_t checksum = 0;
-    const char* p = sentence;
-    if (*p == '$') p++;
-    while (*p && *p != '*') {
-        checksum ^= (uint8_t)*p;
-        p++;
-    }
-    return checksum;
+uint8_t GpsInterface::calculateChecksum(const char *sentence) {
+  uint8_t checksum = 0;
+  const char *p = sentence;
+  if (*p == '$')
+    p++;
+  while (*p && *p != '*') {
+    checksum ^= (uint8_t)*p;
+    p++;
+  }
+  return checksum;
 }
 
 // Thanks JosephHewitt
-String GpsInterface::dt_string_from_gps(){
+String GpsInterface::dt_string_from_gps() {
   // Always return cache if we have nothing better
-  if (nmea.getYear() <= 0) return this->last_datetime_str;
-  
+  if (nmea.getYear() <= 0)
+    return this->last_datetime_str;
+
   // Return a datetime String using GPS data only.
   String datetime = "";
-  if (nmea.getYear() > 0){
+  if (nmea.getYear() > 0) {
     datetime += nmea.getYear();
     datetime += "-";
     datetime += (nmea.getMonth() < 10 ? "0" : "") + String(nmea.getMonth());
@@ -676,12 +701,14 @@ String GpsInterface::dt_string_from_gps(){
 
 void GpsInterface::setGPSInfo() {
   String nmea_sentence = String(nmea.getSentence());
-  if(nmea_sentence != "") this->nmea_sentence = nmea_sentence;
+  if (nmea_sentence != "")
+    this->nmea_sentence = nmea_sentence;
 
   this->good_fix = nmea.isValid();
   this->nav_system = nmea.getNavSystem();
 
-  // Update Satellite Count (Use higher value between "In Use" and "In View" Persistence)
+  // Update Satellite Count (Use higher value between "In Use" and "In View"
+  // Persistence)
   int in_use = nmea.getNumSatellites();
   this->num_sats = (in_use > 0) ? in_use : this->last_sats_viewed;
 
@@ -693,10 +720,11 @@ void GpsInterface::setGPSInfo() {
     this->last_lat = String(nmea.getLatitude() / 1000000.0, 7);
     this->last_lon = String(nmea.getLongitude() / 1000000.0, 7);
     long alt = 0;
-    if (nmea.getAltitude(alt)) this->last_alt = alt / 1000.0;
+    if (nmea.getAltitude(alt))
+      this->last_alt = alt / 1000.0;
     this->coords_synced = true;
   }
-  
+
   if (this->coords_synced) {
     this->lat = this->last_lat;
     this->lon = this->last_lon;
@@ -721,48 +749,49 @@ void GpsInterface::setGPSInfo() {
     this->gps_text = "ERROR: ANTENNA SHORT";
   }
 
-  this->accuracy = 2.5 * ((float)nmea.getHDOP()/10);
-  if (this->accuracy == 0 && this->num_sats == 0) this->accuracy = 63.75; // Initial value
-  if (this->accuracy > 0 && this->accuracy < 63) this->last_accuracy = this->accuracy;
+  this->accuracy = 2.5 * ((float)nmea.getHDOP() / 10);
+  if (this->accuracy == 0 && this->num_sats == 0)
+    this->accuracy = 63.75; // Initial value
+  if (this->accuracy > 0 && this->accuracy < 63)
+    this->last_accuracy = this->accuracy;
 
-  //nmea.clear();
+  // nmea.clear();
 }
 
 float GpsInterface::getAccuracy() {
-  if ((this->accuracy == 0 || this->accuracy >= 63.0) && this->last_accuracy < 63.0) return this->last_accuracy;
+  if ((this->accuracy == 0 || this->accuracy >= 63.0) &&
+      this->last_accuracy < 63.0)
+    return this->last_accuracy;
   return this->accuracy;
 }
 
 String GpsInterface::getLat() {
-  if (this->lat == "Searching..." && this->coords_synced) return this->last_lat;
+  if (this->lat == "Searching..." && this->coords_synced)
+    return this->last_lat;
   return this->lat;
 }
 
 String GpsInterface::getLon() {
-  if (this->lon == "Searching..." && this->coords_synced) return this->last_lon;
+  if (this->lon == "Searching..." && this->coords_synced)
+    return this->last_lon;
   return this->lon;
 }
 
 float GpsInterface::getAlt() {
-  if (this->altf == 0.0 && this->coords_synced) return this->last_alt;
+  if (this->altf == 0.0 && this->coords_synced)
+    return this->last_alt;
   return this->altf;
 }
 
-String GpsInterface::getDatetime() {
-  return this->datetime;
-}
+String GpsInterface::getDatetime() { return this->datetime; }
 
-String GpsInterface::getNumSatsString() {
-  return (String)num_sats;
-}
+String GpsInterface::getNumSatsString() { return (String)num_sats; }
 
-int GpsInterface::getNumSats() {
-  return num_sats;
-}
+int GpsInterface::getSatsInView() { return sats_in_view; }
 
-bool GpsInterface::getFixStatus() {
-  return this->good_fix;
-}
+int GpsInterface::getNumSats() { return num_sats; }
+
+bool GpsInterface::getFixStatus() { return this->good_fix; }
 
 String GpsInterface::getFixStatusAsString() {
   if (this->getFixStatus())
@@ -771,107 +800,99 @@ String GpsInterface::getFixStatusAsString() {
     return "No";
 }
 
-bool GpsInterface::getGpsModuleStatus() {
-  return this->gps_enabled;
-}
+bool GpsInterface::getGpsModuleStatus() { return this->gps_enabled; }
 
-String GpsInterface::getText() {
-  return this->gps_text;
-}
+String GpsInterface::getText() { return this->gps_text; }
 
 int GpsInterface::getTextQueueSize() {
-  if(this->queue_enabled_flag){
-    bool exists=0;
-    if(this->text){
-      int size=this->text->size();
-      if(size) return size;
-      exists=1;
+  if (this->queue_enabled_flag) {
+    bool exists = 0;
+    if (this->text) {
+      int size = this->text->size();
+      if (size)
+        return size;
+      exists = 1;
     }
-    if(this->text_in){
-      int size=this->text_in->size();
-      if(size) return size;
-      exists=1;
+    if (this->text_in) {
+      int size = this->text_in->size();
+      if (size)
+        return size;
+      exists = 1;
     }
-    if(exists)
+    if (exists)
       return 0;
     else
       return -2;
-  }
-  else
+  } else
     return -1;
 }
 
 String GpsInterface::getTextQueue(bool flush) {
-  if(this->queue_enabled_flag){
-    if(this->text){
-      int size=this->text->size();
-      if(size){
+  if (this->queue_enabled_flag) {
+    if (this->text) {
+      int size = this->text->size();
+      if (size) {
         String text;
-        for(int i=0;i<size;i++){
-          String now=this->text_in->get(i);
-          if(now!=""){
-            if(text!=""){
-              text+='\r';
-              text+='\n';
+        for (int i = 0; i < size; i++) {
+          String now = this->text_in->get(i);
+          if (now != "") {
+            if (text != "") {
+              text += '\r';
+              text += '\n';
             }
-            text+=now;
+            text += now;
           }
         }
-        if(flush){
-          LinkedList<String> *delme=this->text;
-          this->text_cycles=0;
-          this->text=this->text_in;
-          if(!this->text) this->text=new LinkedList<String>;
-          if(this->text->size()) this->text_cycles++;
-          this->text_in=new LinkedList<String>;
+        if (flush) {
+          LinkedList<String> *delme = this->text;
+          this->text_cycles = 0;
+          this->text = this->text_in;
+          if (!this->text)
+            this->text = new LinkedList<String>;
+          if (this->text->size())
+            this->text_cycles++;
+          this->text_in = new LinkedList<String>;
           delete delme;
         }
         return text;
       }
-    }
-    else{
-      this->text=new LinkedList<String>;
-      this->text_cycles=0;
+    } else {
+      this->text = new LinkedList<String>;
+      this->text_cycles = 0;
     }
 
-    if(this->text_in){
-      int size=this->text_in->size();
-      if(size){
-        LinkedList<String> *buffer=this->text_in;
-        if(flush)
-          this->text_in=new LinkedList<String>;
+    if (this->text_in) {
+      int size = this->text_in->size();
+      if (size) {
+        LinkedList<String> *buffer = this->text_in;
+        if (flush)
+          this->text_in = new LinkedList<String>;
         String text;
-        for(int i=0;i<size;i++){
-          String now=buffer->get(i);
-          if(now!=""){
-            if(text!=""){
-              text+='\r';
-              text+='\n';
+        for (int i = 0; i < size; i++) {
+          String now = buffer->get(i);
+          if (now != "") {
+            if (text != "") {
+              text += '\r';
+              text += '\n';
             }
-            text+=now;
+            text += now;
           }
         }
-        if(flush)
+        if (flush)
           delete buffer;
         return text;
       }
-    }
-    else
-      this->text_in=new LinkedList<String>;
+    } else
+      this->text_in = new LinkedList<String>;
 
     return this->gps_text;
-  }
-  else
+  } else
     return this->gps_text;
 }
 
-String GpsInterface::getNmea() {
-  return this->nmea_sentence;
-}
+String GpsInterface::getNmea() { return this->nmea_sentence; }
 
-String GpsInterface::getNmeaNotimp() {
-  return this->notimp_nmea_sentence;
-}
+String GpsInterface::getNmeaNotimp() { return this->notimp_nmea_sentence; }
 
 String GpsInterface::getNmeaNotparsed() {
   return this->notparsed_nmea_sentence;
