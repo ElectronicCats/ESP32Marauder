@@ -182,16 +182,6 @@ La conexión de datos debe ser cruzada para que el GPS pueda "hablar" con el ESP
 **Consejo de Soldadura:** Usa cables cortos para evitar interferencias electromagnéticas con la antena WiFi/BT del ESP32-C5.
 
 ---
-
-## 🆘 Solución de Problemas Comunes
-
-*   **El GPS no da señal**: El módulo NEO-6M necesita ver el cielo. Si estás en interiores, acércalo a una ventana. El primer "Fix" puede tardar hasta 10 minutos.
-*   **Error al conectar el Dashboard**: Asegúrate de que el Monitor Serie de Arduino IDE esté **CERRADO**, ya que solo una aplicación puede usar el puerto COM a la vez.
-*   **El Dashboard no carga**: Verifica que ejecutaste `npm install` correctamente y que no hay errores en la terminal.
-
----
-
----
  
 ## 🚀 Optimización y Modo Verbose (Serial)
  
