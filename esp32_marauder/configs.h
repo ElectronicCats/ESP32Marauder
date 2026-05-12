@@ -261,10 +261,10 @@
     #define NFC_SCL 3    // GPIO 3 (Pin 5)
     #define NFC_FD 6     // GPIO 6 (Pin 8)
     #define HAS_GPS
-    #define GPS_TX 4     // MCU TX -> GPS RX
-    #define GPS_RX 5     // MCU RX <- GPS TX
+    #define GPS_TX 25     // MCU TX -> GPS RX (IO25)
+    #define GPS_RX 24     // MCU RX <- GPS TX (IO24)
     #define GPS_SERIAL_INDEX 1
-    #define GPS_ON_PIN 7
+    #define GPS_ON_PIN 10
     #define SD_CS -1
     #define TFT_CS -1
     #define TFT_BL -1
