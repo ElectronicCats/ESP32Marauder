@@ -1,7 +1,7 @@
 #include "GpsInterface.h"
-#include <time.h>
-#include "settings.h"
 #include "CommandLine.h"
+#include "settings.h"
+#include <time.h>
 extern Settings settings_obj;
 extern CommandLine cli_obj;
 
@@ -18,64 +18,70 @@ MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 void GpsInterface::begin() {
   bool module_found = false;
 
-  #if defined(MARAUDER_FLIPPER_C5) || defined(GPS_ON_PIN)
-    #ifndef MARAUDER_FLIPPER_C5
-      Serial.printf("[GPS] Powering ON Module (GPIO %d)...\n", GPS_ON_PIN);
-    #endif
-    pinMode(GPS_ON_PIN, OUTPUT);
-    digitalWrite(GPS_ON_PIN, HIGH);
-    delay(1000); // 1s for module to stabilize
-  #endif
+#if defined(MARAUDER_FLIPPER_C5) || defined(GPS_ON_PIN)
+#ifndef MARAUDER_FLIPPER_C5
+  Serial.printf("[GPS] Powering ON Module (GPIO %d)...\n", GPS_ON_PIN);
+#endif
+  pinMode(GPS_ON_PIN, OUTPUT);
+  digitalWrite(GPS_ON_PIN, HIGH);
+  delay(1000); // 1s for module to stabilize
+#endif
 
   // 1. Auto-Probe at 9600 baud (Standard for ATGM336H/Quectel)
   GpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
   unsigned long start = millis();
   while (millis() - start < 1500) {
     if (GpsSerial.available()) {
-      if (GpsSerial.read() == '$') { module_found = true; break; }
+      if (GpsSerial.read() == '$') {
+        module_found = true;
+        break;
+      }
     }
   }
 
   // 2. If not found, try 115200 baud (High-speed default)
   if (!module_found) {
-    #ifndef MARAUDER_FLIPPER_C5
-      Serial.println(F("[GPS] Probing 115200 baud..."));
-    #endif
+#ifndef MARAUDER_FLIPPER_C5
+    Serial.println(F("[GPS] Probing 115200 baud..."));
+#endif
     GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
     start = millis();
     while (millis() - start < 1000) {
       if (GpsSerial.available()) {
-        if (GpsSerial.read() == '$') { module_found = true; break; }
+        if (GpsSerial.read() == '$') {
+          module_found = true;
+          break;
+        }
       }
     }
   }
 
   // 3. Result handling
   if (!module_found) {
-    #ifndef MARAUDER_FLIPPER_C5
-      Serial.println(F("[GPS] Module NOT FOUND. Disabling GPS features."));
-    #endif
-    #ifdef GPS_ON_PIN
-      digitalWrite(GPS_ON_PIN, LOW); // Power down the empty slot/interference
-    #endif
+#ifndef MARAUDER_FLIPPER_C5
+    Serial.println(F("[GPS] Module NOT FOUND. Disabling GPS features."));
+#endif
+#ifdef GPS_ON_PIN
+    digitalWrite(GPS_ON_PIN, LOW); // Power down the empty slot/interference
+#endif
     this->gps_enabled = false;
     return;
   }
 
-  // 4. If found at 9600, upgrade to 115200 for performance
-  // Note: We check if we were at 9600 by looking at the current baud? No, just force upgrade.
-  this->sendPMTKCommand("PMTK251,115200"); 
+  /*// 4. If found at 9600, upgrade to 115200 for performance
+  this->sendPMTKCommand("PMTK251,115200");
   delay(200);
-  GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);
+  GpsSerial.begin(115200, SERIAL_8N1, GPS_RX, GPS_TX);*/
 
-  // Advanced Configuration Sequence (Minino Style)
-  #ifndef MARAUDER_FLIPPER_C5
-    Serial.println(F("[GPS] Applying Advanced Configuration..."));
-  #endif
-  
+// Advanced Configuration Sequence (Minino Style)
+#ifndef MARAUDER_FLIPPER_C5
+  Serial.println(F("[GPS] Applying Advanced Configuration..."));
+#endif
+
   this->sendPMTKCommand("PMTK101"); // Hot Start
   delay(200);
-  this->sendPMTKCommand("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"); // All NMEA
+  this->sendPMTKCommand(
+      "PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"); // All NMEA
   delay(100);
 
   bool agnss = settings_obj.loadSetting<bool>("GPS_AGNSS");
@@ -93,149 +99,154 @@ void GpsInterface::begin() {
   nmea.setUnknownSentenceHandler(gps_nmea_notimp);
 }
 
-//passthrough for other objects
-void gps_nmea_notimp(MicroNMEA& nmea){
-  gps_obj.enqueue(nmea);
-}
+// passthrough for other objects
+void gps_nmea_notimp(MicroNMEA &nmea) { gps_obj.enqueue(nmea); }
 
-void GpsInterface::enqueue(MicroNMEA& nmea){
+void GpsInterface::enqueue(MicroNMEA &nmea) {
   std::string nmea_sentence = std::string(nmea.getSentence());
 
-  if(nmea_sentence.length()){
+  if (nmea_sentence.length()) {
     this->notimp_nmea_sentence = nmea_sentence.c_str();
 
-    bool unparsed=1;
-    bool enqueue=1;
+    bool unparsed = 1;
+    bool enqueue = 1;
 
-    char system=nmea.getTalkerID();
-    String msg_id=nmea.getMessageID();
-    int length=nmea_sentence.length();
+    char system = nmea.getTalkerID();
+    String msg_id = nmea.getMessageID();
+    int length = nmea_sentence.length();
 
-    if(length>0&&length<256){
-      if(system){
-        if(msg_id=="TXT"){
-          if(length>8){
-            std::string content=nmea_sentence.substr(7,std::string::npos);
+    if (length > 0 && length < 256) {
+      if (system) {
+        if (msg_id == "TXT") {
+          if (length > 8) {
+            std::string content = nmea_sentence.substr(7, std::string::npos);
 
-            int tot_brk=content.find(',');
-            int num_brk=content.find(',',tot_brk+1);
-            int txt_brk=content.find(',',num_brk+1);
-            int chk_brk=content.rfind('*');
+            int tot_brk = content.find(',');
+            int num_brk = content.find(',', tot_brk + 1);
+            int txt_brk = content.find(',', num_brk + 1);
+            int chk_brk = content.rfind('*');
 
-            if(tot_brk!=std::string::npos && num_brk!=std::string::npos && txt_brk!=std::string::npos && chk_brk!=std::string::npos
-                && chk_brk>txt_brk && txt_brk>num_brk && num_brk>tot_brk && tot_brk>=0){
-              std::string total_str=content.substr(0,tot_brk);
-              std::string num_str=content.substr(tot_brk+1,num_brk-tot_brk-1);
-              std::string type_str=content.substr(num_brk+1,txt_brk-num_brk-1);
-              std::string text_str=content.substr(txt_brk+1,chk_brk-txt_brk-1);
-              std::string checksum=content.substr(chk_brk+1,std::string::npos);
+            if (tot_brk != std::string::npos && num_brk != std::string::npos &&
+                txt_brk != std::string::npos && chk_brk != std::string::npos &&
+                chk_brk > txt_brk && txt_brk > num_brk && num_brk > tot_brk &&
+                tot_brk >= 0) {
+              std::string total_str = content.substr(0, tot_brk);
+              std::string num_str =
+                  content.substr(tot_brk + 1, num_brk - tot_brk - 1);
+              std::string type_str =
+                  content.substr(num_brk + 1, txt_brk - num_brk - 1);
+              std::string text_str =
+                  content.substr(txt_brk + 1, chk_brk - txt_brk - 1);
+              std::string checksum =
+                  content.substr(chk_brk + 1, std::string::npos);
 
-              int total=0;
-              if(total_str.length()) total=atoi(total_str.c_str());
+              int total = 0;
+              if (total_str.length())
+                total = atoi(total_str.c_str());
 
-              int num=0;
-              if(num_str.length()) num=atoi(num_str.c_str());
+              int num = 0;
+              if (num_str.length())
+                num = atoi(num_str.c_str());
 
-              int type=0;
-              if(type_str.length()) type=atoi(type_str.c_str());
+              int type = 0;
+              if (type_str.length())
+                type = atoi(type_str.c_str());
 
-              if(text_str.length() && checksum.length()){
-                String text=text_str.c_str();
-                if(type>1){
+              if (text_str.length() && checksum.length()) {
+                String text = text_str.c_str();
+                if (type > 1) {
                   char type_cstr[4];
                   snprintf(type_cstr, 4, "%02d ", type);
-                  type_cstr[3]='\0';
-                  text=type_cstr+text;
+                  type_cstr[3] = '\0';
+                  text = type_cstr + text;
                 }
 
-                if((num<=1||total<=1) && this->queue_enabled_flag){
-                  if(this->text){
-                    if(this->text_in){
-                      int size=text_in->size();
-                      if(size){
-                        #ifdef GPS_TEXT_MAXCYCLES
-                          if(this->text_cycles>=GPS_TEXT_MAXCYCLES){
-                        #else
-                          if(this->text_cycles){
-                        #endif
-                            if(this->text->size()){
-                              LinkedList<String> *delme=this->text;
-                              this->text=new LinkedList<String>;
-                              delete delme;
-                              this->text_cycles=0;
-                            }
-                          }
-                        
-                        for(int i=0;i<size;i++){
-                          this->text->add(this->text_in->get(i));
-                        }
-                        LinkedList<String> *delme=this->text_in;
-                        this->text_in=new LinkedList<String>;
-                        delete delme;
-                        this->text_cycles++;
-
-                        this->gps_text=text;
-                      }
-                    }
-                    else
-                      this->text_in=new LinkedList<String>;
-                  }
-                  else{
-                    if(this->text_in){
-                      this->text_cycles=0;
-                      this->text=this->text_in;
-                      if(this->text->size()){
-                        if(this->gps_text=="") this->gps_text=this->text->get(0);
-                        this->text_cycles++;
-                      }
-                      this->text_in=new LinkedList<String>;
-                    }
-                    else {
-                      this->text_cycles=0;
-                      this->text=new LinkedList<String>;
-                      this->text_in=new LinkedList<String>;
-                    }
-                  }
-
-                  this->text_in->add(text);
-                }
-                else if(this->queue_enabled_flag){
-                  if(!this->text_in) this->text_in=new LinkedList<String>;
-                  this->text_in->add(text);
-                  int size=this->text_in->size();
-
-                  #ifdef GPS_TEXT_MAXLINES
-                    if(size>=GPS_TEXT_MAXLINES){
-                  #else
-                    if(size>=5){
-                  #endif
-                      #ifdef GPS_TEXT_MAXCYCLES
-                        if(this->text_cycles>=GPS_TEXT_MAXCYCLES){
-                      #else
-                        if(this->text_cycles){
-                      #endif
-                          if(this->text->size()){
-                            LinkedList<String> *delme=this->text;
-                            this->text=new LinkedList<String>;
+                if ((num <= 1 || total <= 1) && this->queue_enabled_flag) {
+                  if (this->text) {
+                    if (this->text_in) {
+                      int size = text_in->size();
+                      if (size) {
+#ifdef GPS_TEXT_MAXCYCLES
+                        if (this->text_cycles >= GPS_TEXT_MAXCYCLES) {
+#else
+                        if (this->text_cycles) {
+#endif
+                          if (this->text->size()) {
+                            LinkedList<String> *delme = this->text;
+                            this->text = new LinkedList<String>;
                             delete delme;
-                            this->text_cycles=0;
+                            this->text_cycles = 0;
                           }
                         }
-                      
-                        for(int i=0;i<size;i++)
-                          this->text->add(this->text_in->get(i));
 
-                        LinkedList<String> *delme=this->text_in;
-                        this->text_in=new LinkedList<String>;
+                        for (int i = 0; i < size; i++) {
+                          this->text->add(this->text_in->get(i));
+                        }
+                        LinkedList<String> *delme = this->text_in;
+                        this->text_in = new LinkedList<String>;
                         delete delme;
                         this->text_cycles++;
-                      }
-                }
-                else
-                  if(num<=1||total<=1) this->gps_text=text;
 
-                if(this->gps_text=="") this->gps_text=text;
-                unparsed=0;
+                        this->gps_text = text;
+                      }
+                    } else
+                      this->text_in = new LinkedList<String>;
+                  } else {
+                    if (this->text_in) {
+                      this->text_cycles = 0;
+                      this->text = this->text_in;
+                      if (this->text->size()) {
+                        if (this->gps_text == "")
+                          this->gps_text = this->text->get(0);
+                        this->text_cycles++;
+                      }
+                      this->text_in = new LinkedList<String>;
+                    } else {
+                      this->text_cycles = 0;
+                      this->text = new LinkedList<String>;
+                      this->text_in = new LinkedList<String>;
+                    }
+                  }
+
+                  this->text_in->add(text);
+                } else if (this->queue_enabled_flag) {
+                  if (!this->text_in)
+                    this->text_in = new LinkedList<String>;
+                  this->text_in->add(text);
+                  int size = this->text_in->size();
+
+#ifdef GPS_TEXT_MAXLINES
+                  if (size >= GPS_TEXT_MAXLINES) {
+#else
+                  if (size >= 5) {
+#endif
+#ifdef GPS_TEXT_MAXCYCLES
+                    if (this->text_cycles >= GPS_TEXT_MAXCYCLES) {
+#else
+                    if (this->text_cycles) {
+#endif
+                      if (this->text->size()) {
+                        LinkedList<String> *delme = this->text;
+                        this->text = new LinkedList<String>;
+                        delete delme;
+                        this->text_cycles = 0;
+                      }
+                    }
+
+                    for (int i = 0; i < size; i++)
+                      this->text->add(this->text_in->get(i));
+
+                    LinkedList<String> *delme = this->text_in;
+                    this->text_in = new LinkedList<String>;
+                    delete delme;
+                    this->text_cycles++;
+                  }
+                } else if (num <= 1 || total <= 1)
+                  this->gps_text = text;
+
+                if (this->gps_text == "")
+                  this->gps_text = text;
+                unparsed = 0;
               }
             }
           }
@@ -243,127 +254,113 @@ void GpsInterface::enqueue(MicroNMEA& nmea){
       }
     }
 
-    if(unparsed)
+    if (unparsed)
       this->notparsed_nmea_sentence = nmea_sentence.c_str();
 
-    if(this->queue_enabled_flag){
-      if(enqueue){
-        nmea_sentence_t line = { unparsed, msg_id, nmea_sentence.c_str() };
+    if (this->queue_enabled_flag) {
+      if (enqueue) {
+        nmea_sentence_t line = {unparsed, msg_id, nmea_sentence.c_str()};
 
-        if(this->queue){
-          #ifdef GPS_NMEA_MAXQUEUE
-            if(this->queue->size()>=GPS_NMEA_MAXQUEUE)
-          #else
-            if(this->queue->size()>=30)
-          #endif
-              this->flush_queue();
-        }
-        else
-           this->new_queue();
+        if (this->queue) {
+#ifdef GPS_NMEA_MAXQUEUE
+          if (this->queue->size() >= GPS_NMEA_MAXQUEUE)
+#else
+          if (this->queue->size() >= 30)
+#endif
+            this->flush_queue();
+        } else
+          this->new_queue();
 
         this->queue->add(line);
-      }
-      else
-        if(!this->queue)
-          this->new_queue();
-    }
-    else
+      } else if (!this->queue)
+        this->new_queue();
+    } else
       this->flush_queue();
-  }
-  else
-    if(!this->queue_enabled_flag)
-      this->flush_queue();
-}
-
-void GpsInterface::enable_queue(){
-  if(this->queue_enabled_flag){
-    if(!this->queue)
-      this->new_queue();
-    if(!this->text)
-      this->text=new LinkedList<String>;
-    if(!this->text_in)
-      this->text_in=new LinkedList<String>;
-  }
-  else {
+  } else if (!this->queue_enabled_flag)
     this->flush_queue();
-    this->queue_enabled_flag=1;
+}
+
+void GpsInterface::enable_queue() {
+  if (this->queue_enabled_flag) {
+    if (!this->queue)
+      this->new_queue();
+    if (!this->text)
+      this->text = new LinkedList<String>;
+    if (!this->text_in)
+      this->text_in = new LinkedList<String>;
+  } else {
+    this->flush_queue();
+    this->queue_enabled_flag = 1;
   }
 }
 
-void GpsInterface::disable_queue(){
-  this->queue_enabled_flag=0;
+void GpsInterface::disable_queue() {
+  this->queue_enabled_flag = 0;
   this->flush_queue();
 }
 
-bool GpsInterface::queue_enabled(){
-  return this->queue_enabled_flag;
+bool GpsInterface::queue_enabled() { return this->queue_enabled_flag; }
+
+LinkedList<nmea_sentence_t> *GpsInterface::get_queue() { return this->queue; }
+
+void GpsInterface::new_queue() {
+  this->queue = new LinkedList<nmea_sentence_t>;
 }
 
-LinkedList<nmea_sentence_t>* GpsInterface::get_queue(){
-  return this->queue;
-}
-
-void GpsInterface::new_queue(){
-  this->queue=new LinkedList<nmea_sentence_t>;
-}
-
-void GpsInterface::flush_queue(){
+void GpsInterface::flush_queue() {
   this->flush_queue_nmea();
   this->flush_text();
 }
 
-void GpsInterface::flush_queue_nmea(){
-  if(this->queue){
-    if(this->queue->size()){
-      LinkedList<nmea_sentence_t> *delme=this->queue;
+void GpsInterface::flush_queue_nmea() {
+  if (this->queue) {
+    if (this->queue->size()) {
+      LinkedList<nmea_sentence_t> *delme = this->queue;
       this->new_queue();
       delete delme;
     }
-  }
-  else
+  } else
     this->new_queue();
 }
 
-void GpsInterface::flush_text(){
+void GpsInterface::flush_text() {
   this->flush_queue_text();
   this->flush_queue_textin();
 }
 
-void GpsInterface::flush_queue_text(){
-  this->text_cycles=0;
+void GpsInterface::flush_queue_text() {
+  this->text_cycles = 0;
 
-  if(this->text){
-    if(this->text->size()){
-      LinkedList<String> *delme=this->text;
-      this->text=new LinkedList<String>;
+  if (this->text) {
+    if (this->text->size()) {
+      LinkedList<String> *delme = this->text;
+      this->text = new LinkedList<String>;
       delete delme;
     }
-  }
-  else
-    this->text=new LinkedList<String>;
+  } else
+    this->text = new LinkedList<String>;
 }
 
-void GpsInterface::flush_queue_textin(){
-  if(this->text_in){
-    if(this->text_in->size()){
-      LinkedList<String> *delme=this->text_in;
-      this->text_in=new LinkedList<String>;
+void GpsInterface::flush_queue_textin() {
+  if (this->text_in) {
+    if (this->text_in->size()) {
+      LinkedList<String> *delme = this->text_in;
+      this->text_in = new LinkedList<String>;
       delete delme;
     }
-  }
-  else
-    this->text_in=new LinkedList<String>;
+  } else
+    this->text_in = new LinkedList<String>;
 }
 
-void GpsInterface::sendSentence(const char* sentence){
+void GpsInterface::sendSentence(const char *sentence) {
   MicroNMEA::sendSentence(GpsSerial, sentence);
 }
 
-void GpsInterface::sendSentence(Stream &s, const char* sentence){
+void GpsInterface::sendSentence(Stream &s, const char *sentence) {
   MicroNMEA::sendSentence(s, sentence);
 }
 
-void GpsInterface::sendPMTKCommand(const char* command) {
+void GpsInterface::sendPMTKCommand(const char *command) {
   // Use MicroNMEA to send the sentence which handles checksum and $/*
   MicroNMEA::sendSentence(GpsSerial, command);
   delay(100);
@@ -386,12 +383,17 @@ void GpsInterface::setAGNSS(bool enabled) {
 void GpsInterface::setUpdateRate(uint8_t rate_hz) {
   char cmd[32];
   uint16_t interval = 1000;
-  if (rate_hz == 5) interval = 200;
-  else if (rate_hz == 10) interval = 100;
-  else rate_hz = 1; // Fallback to 1Hz
+  if (rate_hz == 5)
+    interval = 200;
+  else if (rate_hz == 10)
+    interval = 100;
+  else
+    rate_hz = 1; // Fallback to 1Hz
 
 #ifndef MARAUDER_FLIPPER_C5
-  Serial.print(F("[GPS] Setting Update Rate to ")); Serial.print(rate_hz); Serial.println(F("Hz"));
+  Serial.print(F("[GPS] Setting Update Rate to "));
+  Serial.print(rate_hz);
+  Serial.println(F("Hz"));
 #endif
   snprintf(cmd, sizeof(cmd), "PMTK220,%d", interval);
   this->sendPMTKCommand(cmd);
@@ -413,42 +415,43 @@ void GpsInterface::setConstellations(bool advanced) {
 }
 
 void GpsInterface::setConfigConstellation(String type) {
-  #ifndef MARAUDER_FLIPPER_C5
+#ifndef MARAUDER_FLIPPER_C5
   Serial.println("[GPS] Setting PMTK Constellation to: " + type);
-  #endif
-  
-  if(type == "native" || type == "gps")
+#endif
+
+  if (type == "native" || type == "gps")
     this->sendPMTKCommand("PMTK353,1,0,0,0,0,0,0,0,0");
-  else if(type == "glonass")
+  else if (type == "glonass")
     this->sendPMTKCommand("PMTK353,0,1,0,0,0,0,0,0,0");
-  else if(type == "galileo")
+  else if (type == "galileo")
     this->sendPMTKCommand("PMTK353,0,0,1,0,0,0,0,0,0");
-  else if(type == "beidou" || type == "beidou_bd")
+  else if (type == "beidou" || type == "beidou_bd")
     this->sendPMTKCommand("PMTK353,0,0,0,0,1,0,0,0,0");
-  else if(type == "navic" || type == "qzss")
-    this->sendPMTKCommand("PMTK353,1,0,0,0,0,0,0,0,0"); // Fallback for unsupported ones
+  else if (type == "navic" || type == "qzss")
+    this->sendPMTKCommand(
+        "PMTK353,1,0,0,0,0,0,0,0,0"); // Fallback for unsupported ones
   else
     this->sendPMTKCommand("PMTK353,1,1,1,1,1,0,0,0,0"); // All
 }
 
 void GpsInterface::logPOI(String note) {
-  #ifdef HAS_SD
+#ifdef HAS_SD
   if (!settings_obj.loadSetting<bool>("EnableSD")) {
     Serial.println("[POI] Not logged. SD Card disabled in settings.");
     return;
   }
-  
+
   File logFile = SD.open("/poi_log.csv", FILE_APPEND);
   if (!logFile) {
     Serial.println("[POI] Failed to open /poi_log.csv");
     return;
   }
-  
+
   // Format: Timestamp, Latitude, Longitude, Altitude, Note
   String lat_str = this->last_lat;
   String lon_str = this->last_lon;
   String dt_str = this->last_datetime_str;
-  
+
   if (!this->coords_synced) {
     lat_str = "--";
     lon_str = "--";
@@ -456,40 +459,41 @@ void GpsInterface::logPOI(String note) {
   if (!this->time_synced) {
     dt_str = "No_Time";
   }
-  
-  String csv_line = dt_str + "," + lat_str + "," + lon_str + "," + String(this->last_alt, 2) + "," + note + "\n";
+
+  String csv_line = dt_str + "," + lat_str + "," + lon_str + "," +
+                    String(this->last_alt, 2) + "," + note + "\n";
   logFile.print(csv_line);
   logFile.close();
-  
+
   Serial.println("[POI] Logged: " + note);
-  #else
+#else
   Serial.println("[POI] Not logged. SD Card unsupported.");
-  #endif
+#endif
 }
 
-void GpsInterface::setType(String t){
-  if(t == "native")
-    this->type_flag=GPSTYPE_NATIVE;
-  else if(t == "gps")
-    this->type_flag=GPSTYPE_GPS;
-  else if(t == "glonass")
-    this->type_flag=GPSTYPE_GLONASS;
-  else if(t == "galileo")
-    this->type_flag=GPSTYPE_GALILEO;
-  else if(t == "navic")
-    this->type_flag=GPSTYPE_NAVIC;
-  else if(t == "qzss")
-    this->type_flag=GPSTYPE_QZSS;        
-  else if(t == "beidou")
-    this->type_flag=GPSTYPE_BEIDOU;
-  else if(t == "beidou_bd")
-    this->type_flag=GPSTYPE_BEIDOU_BD;    
+void GpsInterface::setType(String t) {
+  if (t == "native")
+    this->type_flag = GPSTYPE_NATIVE;
+  else if (t == "gps")
+    this->type_flag = GPSTYPE_GPS;
+  else if (t == "glonass")
+    this->type_flag = GPSTYPE_GLONASS;
+  else if (t == "galileo")
+    this->type_flag = GPSTYPE_GALILEO;
+  else if (t == "navic")
+    this->type_flag = GPSTYPE_NAVIC;
+  else if (t == "qzss")
+    this->type_flag = GPSTYPE_QZSS;
+  else if (t == "beidou")
+    this->type_flag = GPSTYPE_BEIDOU;
+  else if (t == "beidou_bd")
+    this->type_flag = GPSTYPE_BEIDOU_BD;
   else
-    this->type_flag=GPSTYPE_ALL;
+    this->type_flag = GPSTYPE_ALL;
 }
 
-String GpsInterface::generateGXgga(){
-  String msg_type="$"+this->generateType()+"GGA,";
+String GpsInterface::generateGXgga() {
+  String msg_type = "$" + this->generateType() + "GGA,";
 
   char timeStr[11];
   if (this->time_synced) {
