@@ -902,260 +902,383 @@ String GpsInterface::getNmeaNotparsed() {
 extern WiFiScan wifi_scan_obj;
 
 void GpsInterface::main() {
-  #ifdef HAS_GPS
-    if (GpsSerial.available()) {
-      while (GpsSerial.available()) {
-        char c = GpsSerial.read();
-        if (c == '$') {
-          buffer_pos = 0;
-        }
+#ifdef HAS_GPS
+  if (GpsSerial.available()) {
+    while (GpsSerial.available()) {
+      char c = GpsSerial.read();
+      if (c == '$') {
+        buffer_pos = 0;
+      }
 
-        if (buffer_pos < sizeof(nmea_buffer) - 1) {
-          nmea_buffer[buffer_pos++] = c;
-          nmea_buffer[buffer_pos] = '\0';
-          
-            if (c == '\n' || c == '\r') {
-              if (buffer_pos < 6) { // Ignore short/junk
-                buffer_pos = 0;
-                continue;
-              }
-              // NMEA Normalization Engine (Neutralize GN, GB, BD)
-              if (buffer_pos > 5 && nmea_buffer[0] == '$' && (nmea_buffer[1] == 'G' || nmea_buffer[1] == 'B')) {
-                bool modified = false;
+      // 1. Feed EVERY character to the parser immediately
+      nmea.process(c);
 
-                // 1. Force GP Talker ID
-                if (nmea_buffer[2] != 'P') {
-                  nmea_buffer[1] = 'G';
-                  nmea_buffer[2] = 'P';
-                  modified = true;
+      if (buffer_pos < sizeof(nmea_buffer) - 1) {
+        nmea_buffer[buffer_pos++] = c;
+        nmea_buffer[buffer_pos] = '\0';
+
+        if (c == '\n' || c == '\r') {
+          if (buffer_pos < 6) { // Ignore short/junk
+            buffer_pos = 0;
+            continue;
+          }
+          // 2. NMEA Normalization Engine (Neutralize GN, GB, BD)
+          if (buffer_pos > 5 && nmea_buffer[0] == '$' &&
+              (nmea_buffer[1] == 'G' || nmea_buffer[1] == 'B')) {
+            bool modified = false;
+
+            // 2.1 Force GP Talker ID
+            if (nmea_buffer[2] != 'P') {
+              nmea_buffer[1] = 'G';
+              nmea_buffer[2] = 'P';
+              modified = true;
+            }
+
+            // 2.2 Absolute Checksum recalculation
+            char *pStar = strchr(nmea_buffer, '*');
+            if (pStar && modified) {
+              unsigned char ck = 0;
+              for (char *p = nmea_buffer + 1; p < pStar; p++)
+                ck ^= (unsigned char)(*p);
+              char hex[3];
+              sprintf(hex, "%02X", ck);
+              pStar[1] = hex[0];
+              pStar[2] = hex[1];
+            }
+
+            // 4. Structural Repair and Forceful Telemetry Injection for UI
+            // Dashboards (OUTPUT ONLY)
+            const char *repairable[] = {"GGA,", "RMC,", "ZDA,", "GLL,", "GSV,"};
+            bool is_repairable = false;
+            for (int r = 0; r < 5; r++)
+              if (strstr(nmea_buffer, repairable[r]))
+                is_repairable = true;
+
+            // Hijacking logic (Assembles 'clean' sentences for the Dashboard)
+            if (is_repairable) {
+              int commas = 0;
+              char hijacked[256] = {
+                  0}; // Increased to 256 to stop stack smashing
+              int h_pos = 0;
+              bool modified_output = false;
+
+              for (int i = 0; i < (int)strlen(nmea_buffer) && h_pos < 250;
+                   i++) {
+                hijacked[h_pos++] = nmea_buffer[i];
+                if (nmea_buffer[i] == ',') {
+                  commas++;
+                  bool field_empty =
+                      (nmea_buffer[i + 1] == ',' || nmea_buffer[i + 1] == '*' ||
+                       nmea_buffer[i + 1] == '\0');
+
+                  // 4.1 Force Time Injection
+                  bool is_time_field =
+                      (commas == 1 && !strstr(nmea_buffer, "GLL,")) ||
+                      (commas == 5 && strstr(nmea_buffer, "GLL,"));
+                  if (is_time_field && (this->time_synced || field_empty)) {
+                    for (int j = 0;
+                         j < (int)this->last_time_str.length() && h_pos < 250;
+                         j++)
+                      hijacked[h_pos++] = this->last_time_str[j];
+                    while (nmea_buffer[i + 1] != ',' &&
+                           nmea_buffer[i + 1] != '*' &&
+                           nmea_buffer[i + 1] != '\0')
+                      i++;
+                    modified_output = true;
+                  }
+
+                  // 4.2 Latitude Injection
+                  bool is_lat_f =
+                      (commas == 2 && strstr(nmea_buffer, "GGA,")) ||
+                      (commas == 3 && strstr(nmea_buffer, "RMC,")) ||
+                      (commas == 1 && strstr(nmea_buffer, "GLL,"));
+                  if (is_lat_f && (field_empty && this->coords_synced)) {
+                    double val = abs(this->last_lat.toDouble());
+                    char c_buf[16];
+                    snprintf(c_buf, 16, "%02d%08.5f", (int)val,
+                             (val - (int)val) * 60.0);
+                    for (int j = 0; j < (int)strlen(c_buf) && h_pos < 250; j++)
+                      hijacked[h_pos++] = c_buf[j];
+                    while (nmea_buffer[i + 1] != ',' &&
+                           nmea_buffer[i + 1] != '*' &&
+                           nmea_buffer[i + 1] != '\0')
+                      i++;
+                    modified_output = true;
+                  }
+
+                  // 4.3 Longitude Injection
+                  bool is_lon_f =
+                      (commas == 4 && strstr(nmea_buffer, "GGA,")) ||
+                      (commas == 5 && strstr(nmea_buffer, "RMC,")) ||
+                      (commas == 3 && strstr(nmea_buffer, "GLL,"));
+                  if (is_lon_f && (field_empty && this->coords_synced)) {
+                    double val = abs(this->last_lon.toDouble());
+                    char c_buf[16];
+                    snprintf(c_buf, 16, "%03d%08.5f", (int)val,
+                             (val - (int)val) * 60.0);
+                    for (int j = 0; j < (int)strlen(c_buf) && h_pos < 250; j++)
+                      hijacked[h_pos++] = c_buf[j];
+                    while (nmea_buffer[i + 1] != ',' &&
+                           nmea_buffer[i + 1] != '*' &&
+                           nmea_buffer[i + 1] != '\0')
+                      i++;
+                    modified_output = true;
+                  }
+
+                  // 4.4 N/S and E/W Orientation Injection
+                  bool is_ns_f = (commas == 3 && strstr(nmea_buffer, "GGA,")) ||
+                                 (commas == 4 && strstr(nmea_buffer, "RMC,")) ||
+                                 (commas == 2 && strstr(nmea_buffer, "GLL,"));
+                  bool is_ew_f = (commas == 5 && strstr(nmea_buffer, "GGA,")) ||
+                                 (commas == 6 && strstr(nmea_buffer, "RMC,")) ||
+                                 (commas == 4 && strstr(nmea_buffer, "GLL,"));
+
+                  if ((is_ns_f || is_ew_f) &&
+                      (field_empty && this->coords_synced)) {
+                    if (is_ns_f && h_pos < 250)
+                      hijacked[h_pos++] =
+                          (this->last_lat.toDouble() >= 0) ? 'N' : 'S';
+                    if (is_ew_f && h_pos < 250)
+                      hijacked[h_pos++] =
+                          (this->last_lon.toDouble() >= 0) ? 'E' : 'W';
+                    while (nmea_buffer[i + 1] != ',' &&
+                           nmea_buffer[i + 1] != '*' &&
+                           nmea_buffer[i + 1] != '\0')
+                      i++;
+                    modified_output = true;
+                  }
+
+                  // 4.5 Status / Fix Quality
+                  bool is_fix_f =
+                      (commas == 6 && strstr(nmea_buffer, "GGA,")) ||
+                      (commas == 2 && strstr(nmea_buffer, "RMC,")) ||
+                      (commas == 6 && strstr(nmea_buffer, "GLL,"));
+                  if (is_fix_f && h_pos < 250) {
+                    bool good = (this->coords_synced || nmea.isValid());
+                    if (strstr(nmea_buffer, "GGA,"))
+                      hijacked[h_pos++] = good ? '1' : '0';
+                    else if (strstr(nmea_buffer, "RMC,"))
+                      hijacked[h_pos++] = good ? 'A' : 'V';
+                    else if (strstr(nmea_buffer, "GLL,"))
+                      hijacked[h_pos++] = good ? 'A' : 'V';
+
+                    while (nmea_buffer[i + 1] != ',' &&
+                           nmea_buffer[i + 1] != '*' &&
+                           nmea_buffer[i + 1] != '\0')
+                      i++;
+                    modified_output = true;
+                  }
+
+                  // 4.6 Satellites In View
+                  bool is_sat_f =
+                      (commas == 7 && strstr(nmea_buffer, "GGA,")) ||
+                      (commas == 3 && strstr(nmea_buffer, "GSV,"));
+                  if (is_sat_f && h_pos < 248) {
+                    int s_view =
+                        (this->sats_in_view > (int)nmea.getNumSatellites())
+                            ? this->sats_in_view
+                            : (int)nmea.getNumSatellites();
+                    if (s_view == 0)
+                      s_view = this->last_sats_viewed;
+                    char s_str[4];
+                    snprintf(s_str, 4, "%02d", s_view);
+                    hijacked[h_pos++] = s_str[0];
+                    hijacked[h_pos++] = s_str[1];
+                    while (nmea_buffer[i + 1] != ',' &&
+                           nmea_buffer[i + 1] != '*' &&
+                           nmea_buffer[i + 1] != '\0')
+                      i++;
+                    modified_output = true;
+                  }
+
+                  // 4.7 Altitude and HDOP (GGA only)
+                  if (strstr(nmea_buffer, "GGA,")) {
+                    if (commas == 8 &&
+                        (field_empty || this->last_accuracy < 10.0)) {
+                      char h_buf[10];
+                      snprintf(h_buf, 10, "%.1f", this->last_accuracy / 2.5);
+                      for (int j = 0; j < (int)strlen(h_buf) && h_pos < 250;
+                           j++)
+                        hijacked[h_pos++] = h_buf[j];
+                      while (nmea_buffer[i + 1] != ',' &&
+                             nmea_buffer[i + 1] != '*' &&
+                             nmea_buffer[i + 1] != '\0')
+                        i++;
+                      modified_output = true;
+                    }
+                    if (commas == 9 && (field_empty && this->coords_synced)) {
+                      char a_buf[12];
+                      snprintf(a_buf, 12, "%.1f", this->last_alt);
+                      for (int j = 0; j < (int)strlen(a_buf) && h_pos < 250;
+                           j++)
+                        hijacked[h_pos++] = a_buf[j];
+                      while (nmea_buffer[i + 1] != ',' &&
+                             nmea_buffer[i + 1] != '*' &&
+                             nmea_buffer[i + 1] != '\0')
+                        i++;
+                      modified_output = true;
+                    }
+                  }
+
+                  // 4.8 Date Injection into RMC / ZDA
+                  if (strstr(nmea_buffer, "RMC,") && commas == 9 &&
+                      (this->time_synced)) {
+                    for (int j = 0;
+                         j < (int)this->last_date_str.length() && h_pos < 250;
+                         j++)
+                      hijacked[h_pos++] = this->last_date_str[j];
+                    while (nmea_buffer[i + 1] != ',' &&
+                           nmea_buffer[i + 1] != '*' &&
+                           nmea_buffer[i + 1] != '\0')
+                      i++;
+                    modified_output = true;
+                  }
+                  if (strstr(nmea_buffer, "ZDA,") && (this->time_synced)) {
+                    if (commas == 2 && h_pos < 248) {
+                      char d_str[4];
+                      snprintf(
+                          d_str, 4, "%02d",
+                          (int)this->last_date_str.substring(0, 2).toInt());
+                      hijacked[h_pos++] = d_str[0];
+                      hijacked[h_pos++] = d_str[1];
+                      while (nmea_buffer[i + 1] != ',' &&
+                             nmea_buffer[i + 1] != '*' &&
+                             nmea_buffer[i + 1] != '\0')
+                        i++;
+                      modified_output = true;
+                    } else if (commas == 3 && h_pos < 248) {
+                      char m_str[4];
+                      snprintf(
+                          m_str, 4, "%02d",
+                          (int)this->last_date_str.substring(2, 4).toInt());
+                      hijacked[h_pos++] = m_str[0];
+                      hijacked[h_pos++] = m_str[1];
+                      while (nmea_buffer[i + 1] != ',' &&
+                             nmea_buffer[i + 1] != '*' &&
+                             nmea_buffer[i + 1] != '\0')
+                        i++;
+                      modified_output = true;
+                    } else if (commas == 4) {
+                      String full_y = this->last_datetime_str.substring(0, 4);
+                      for (int j = 0; j < (int)full_y.length() && h_pos < 250;
+                           j++)
+                        hijacked[h_pos++] = full_y[j];
+                      while (nmea_buffer[i + 1] != ',' &&
+                             nmea_buffer[i + 1] != '*' &&
+                             nmea_buffer[i + 1] != '\0')
+                        i++;
+                      modified_output = true;
+                    }
+                  }
                 }
+              }
 
-                // 2. Absolute Checksum recalculation
-                char* pStar = strchr(nmea_buffer, '*');
-                if (pStar && modified) {
+              if (modified_output) {
+                hijacked[h_pos] = '\0';
+                strncpy(nmea_buffer, hijacked, sizeof(nmea_buffer) - 1);
+                nmea_buffer[sizeof(nmea_buffer) - 1] = '\0';
+                pStar = strchr(nmea_buffer, '*');
+                if (pStar) {
                   unsigned char ck = 0;
-                  for (char* p = nmea_buffer + 1; p < pStar; p++) ck ^= (unsigned char)(*p);
+                  for (char *p = nmea_buffer + 1; p < pStar; p++)
+                    ck ^= (unsigned char)(*p);
                   char hex[3];
                   sprintf(hex, "%02X", ck);
                   pStar[1] = hex[0];
                   pStar[2] = hex[1];
+                  pStar[3] = '\0';
                 }
+              }
+            }
 
-                // 3. Feed the NMEA to the parser BEFORE we inject our forced local time
-                // This ensures internal state is consistent UTC
-                for (int i = 0; i < (int)strlen(nmea_buffer); i++) {
-                  nmea.process(nmea_buffer[i]);
+            // 5. Manual Manual DateTime Extraction (ATGM336H / ZDA Support)
+            // This ensures clock updates even if MicroNMEA library returns Year
+            // 0
+            if (strstr(nmea_buffer, "ZDA,") || strstr(nmea_buffer, "RMC,")) {
+              LinkedList<String> fields =
+                  cli_obj.parseCommand(nmea_buffer, ",");
+              if (strstr(nmea_buffer, "ZDA,") && fields.size() >= 5) {
+                String time_f = fields.get(1);  // HHMMSS.SS
+                String day_f = fields.get(2);   // DD
+                String month_f = fields.get(3); // MM
+                String year_f = fields.get(4);  // YYYY
+                if (year_f.toInt() > 2000) {
+                  this->last_time_str = time_f;
+                  this->last_date_str = day_f + month_f + year_f.substring(2);
+                  this->last_datetime_str =
+                      year_f + "-" + month_f + "-" + day_f + " " +
+                      time_f.substring(0, 2) + ":" + time_f.substring(2, 4) +
+                      ":" + time_f.substring(4, 6);
+                  this->time_synced = true;
                 }
+              } else if (strstr(nmea_buffer, "RMC,") && fields.size() >= 10) {
+                String time_f = fields.get(1); // HHMMSS.SS
+                String date_f = fields.get(9); // DDMMYY
+                if (date_f.length() == 6 && date_f != "000000") {
+                  this->last_time_str = time_f;
+                  this->last_date_str = date_f;
+                  this->last_datetime_str =
+                      "20" + date_f.substring(4, 6) + "-" +
+                      date_f.substring(2, 4) + "-" + date_f.substring(0, 2) +
+                      " " + time_f.substring(0, 2) + ":" +
+                      time_f.substring(2, 4) + ":" + time_f.substring(4, 6);
+                  this->time_synced = true;
+                }
+              }
+            }
 
-                // 4. Structural Repair and Forceful Telemetry Injection for UI Dashboards (OUTPUT ONLY)
-                const char* repairable[] = {"GGA,", "RMC,", "ZDA,", "GLL,", "GSV,"};
-                bool is_repairable = false;
-                for (int r=0; r<5; r++) if (strstr(nmea_buffer, repairable[r])) is_repairable = true;
+            // 6. Echo NMEA to Serial (Only during active GPS scan/wardrive)
+            if (wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA &&
+                nmea_buffer[0] == '$') {
+              // Block noisy hardware messages
+              if (strstr(nmea_buffer, "ANTENNA") ||
+                  strstr(nmea_buffer, "OPEN") || strstr(nmea_buffer, "SHORT")) {
+                buffer_pos = 0;
+                continue;
+              }
 
-                // Hijacking logic (Assembles 'clean' sentences for the Dashboard)
-                if (is_repairable) {
-                  int commas = 0;
-                  char hijacked[256] = {0}; // Increased to 256 to stop stack smashing
-                  int h_pos = 0;
-                  bool modified_output = false;
+              const char *dashboard_safe[] = {"GGA", "RMC", "GSV", "GSA",
+                                              "GLL", "VTG", "ZDA"};
+              bool safe = false;
+              for (int s = 0; s < 7; s++)
+                if (strstr(nmea_buffer, dashboard_safe[s]))
+                  safe = true;
 
-                  for (int i = 0; i < (int)strlen(nmea_buffer) && h_pos < 250; i++) {
-                    hijacked[h_pos++] = nmea_buffer[i];
-                    if (nmea_buffer[i] == ',') {
-                      commas++;
-                      bool field_empty = (nmea_buffer[i+1] == ',' || nmea_buffer[i+1] == '*' || nmea_buffer[i+1] == '\0');
-                      
-                      // 4.1 Force Time Injection
-                      bool is_time_field = (commas == 1 && !strstr(nmea_buffer, "GLL,")) || (commas == 5 && strstr(nmea_buffer, "GLL,"));
-                      if (is_time_field && (this->time_synced || field_empty)) { 
-                        for (int j = 0; j < (int)this->last_time_str.length() && h_pos < 250; j++) hijacked[h_pos++] = this->last_time_str[j];
-                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                        modified_output = true;
-                      }
+              if (safe) {
+                // TALKER ID OVERRIDE: Force output to match user-selected
+                // constellation
+                if (this->type_flag != GPSTYPE_NATIVE &&
+                    this->type_flag != GPSTYPE_ALL) {
+                  String custom_id = this->generateType();
+                  if (custom_id.length() >= 2) {
+                    nmea_buffer[1] = custom_id[0];
+                    nmea_buffer[2] = custom_id[1];
 
-                      // 4.2 Latitude Injection
-                      bool is_lat_f = (commas == 2 && strstr(nmea_buffer, "GGA,")) || (commas == 3 && strstr(nmea_buffer, "RMC,")) || (commas == 1 && strstr(nmea_buffer, "GLL,"));
-                      if (is_lat_f && (field_empty && this->coords_synced)) {
-                        double val = abs(this->last_lat.toDouble());
-                        char c_buf[16]; snprintf(c_buf, 16, "%02d%08.5f", (int)val, (val - (int)val) * 60.0);
-                        for (int j=0; j<(int)strlen(c_buf) && h_pos < 250; j++) hijacked[h_pos++] = c_buf[j];
-                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                        modified_output = true;
-                      }
-                      
-                      // 4.3 Longitude Injection
-                      bool is_lon_f = (commas == 4 && strstr(nmea_buffer, "GGA,")) || (commas == 5 && strstr(nmea_buffer, "RMC,")) || (commas == 3 && strstr(nmea_buffer, "GLL,"));
-                      if (is_lon_f && (field_empty && this->coords_synced)) {
-                        double val = abs(this->last_lon.toDouble());
-                        char c_buf[16]; snprintf(c_buf, 16, "%03d%08.5f", (int)val, (val - (int)val) * 60.0);
-                        for (int j=0; j<(int)strlen(c_buf) && h_pos < 250; j++) hijacked[h_pos++] = c_buf[j];
-                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                        modified_output = true;
-                      }
-                      
-                      // 4.4 N/S and E/W Orientation Injection
-                      bool is_ns_f = (commas == 3 && strstr(nmea_buffer, "GGA,")) || (commas == 4 && strstr(nmea_buffer, "RMC,")) || (commas == 2 && strstr(nmea_buffer, "GLL,"));
-                      bool is_ew_f = (commas == 5 && strstr(nmea_buffer, "GGA,")) || (commas == 6 && strstr(nmea_buffer, "RMC,")) || (commas == 4 && strstr(nmea_buffer, "GLL,"));
-
-                      if ((is_ns_f || is_ew_f) && (field_empty && this->coords_synced)) {
-                        if (is_ns_f && h_pos < 250) hijacked[h_pos++] = (this->last_lat.toDouble() >= 0) ? 'N' : 'S';
-                        if (is_ew_f && h_pos < 250) hijacked[h_pos++] = (this->last_lon.toDouble() >= 0) ? 'E' : 'W';
-                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                        modified_output = true;
-                      }
-
-                      // 4.5 Status / Fix Quality
-                      bool is_fix_f = (commas == 6 && strstr(nmea_buffer, "GGA,")) || (commas == 2 && strstr(nmea_buffer, "RMC,")) || (commas == 6 && strstr(nmea_buffer, "GLL,"));
-                      if (is_fix_f && h_pos < 250) {
-                        bool good = (this->coords_synced || nmea.isValid());
-                        if (strstr(nmea_buffer, "GGA,")) hijacked[h_pos++] = good ? '1' : '0';
-                        else if (strstr(nmea_buffer, "RMC,")) hijacked[h_pos++] = good ? 'A' : 'V';
-                        else if (strstr(nmea_buffer, "GLL,")) hijacked[h_pos++] = good ? 'A' : 'V';
-                        
-                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                        modified_output = true;
-                      }
-
-                      // 4.6 Satellites In View
-                      bool is_sat_f = (commas == 7 && strstr(nmea_buffer, "GGA,")) || (commas == 3 && strstr(nmea_buffer, "GSV,"));
-                      if (is_sat_f && h_pos < 248) {
-                        int s_view = (this->sats_in_view > (int)nmea.getNumSatellites()) ? this->sats_in_view : (int)nmea.getNumSatellites();
-                        if (s_view == 0) s_view = this->last_sats_viewed;
-                        char s_str[4]; snprintf(s_str, 4, "%02d", s_view);
-                        hijacked[h_pos++] = s_str[0]; hijacked[h_pos++] = s_str[1];
-                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                        modified_output = true;
-                      }
-
-                      // 4.7 Altitude and HDOP (GGA only)
-                      if (strstr(nmea_buffer, "GGA,")) {
-                        if (commas == 8 && (field_empty || this->last_accuracy < 10.0)) {
-                          char h_buf[10]; snprintf(h_buf, 10, "%.1f", this->last_accuracy / 2.5);
-                          for (int j=0; j<(int)strlen(h_buf) && h_pos < 250; j++) hijacked[h_pos++] = h_buf[j];
-                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                          modified_output = true;
-                        }
-                        if (commas == 9 && (field_empty && this->coords_synced)) {
-                          char a_buf[12]; snprintf(a_buf, 12, "%.1f", this->last_alt);
-                          for (int j=0; j<(int)strlen(a_buf) && h_pos < 250; j++) hijacked[h_pos++] = a_buf[j];
-                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                          modified_output = true;
-                        }
-                      }
-
-                      // 4.8 Date Injection into RMC / ZDA
-                      if (strstr(nmea_buffer, "RMC,") && commas == 9 && (this->time_synced)) {
-                        for (int j = 0; j < (int)this->last_date_str.length() && h_pos < 250; j++) hijacked[h_pos++] = this->last_date_str[j];
-                        while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                        modified_output = true;
-                      }
-                      if (strstr(nmea_buffer, "ZDA,") && (this->time_synced)) {
-                        if (commas == 2 && h_pos < 248) { 
-                          char d_str[4]; snprintf(d_str, 4, "%02d", (int)this->last_date_str.substring(0,2).toInt());
-                          hijacked[h_pos++] = d_str[0]; hijacked[h_pos++] = d_str[1];
-                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                          modified_output = true;
-                        }
-                        else if (commas == 3 && h_pos < 248) {
-                          char m_str[4]; snprintf(m_str, 4, "%02d", (int)this->last_date_str.substring(2,4).toInt());
-                          hijacked[h_pos++] = m_str[0]; hijacked[h_pos++] = m_str[1];
-                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                          modified_output = true;
-                        }
-                        else if (commas == 4) {
-                          String full_y = this->last_datetime_str.substring(0,4);
-                          for (int j=0; j<(int)full_y.length() && h_pos < 250; j++) hijacked[h_pos++] = full_y[j];
-                          while (nmea_buffer[i+1] != ',' && nmea_buffer[i+1] != '*' && nmea_buffer[i+1] != '\0') i++;
-                          modified_output = true;
-                        }
-                      }
-                    }
-                  }
-
-                  if (modified_output) {
-                    hijacked[h_pos] = '\0';
-                    strncpy(nmea_buffer, hijacked, sizeof(nmea_buffer) - 1);
-                    nmea_buffer[sizeof(nmea_buffer) - 1] = '\0';
-                    pStar = strchr(nmea_buffer, '*');
-                    if (pStar) {
-                      unsigned char ck = 0;
-                      for (char* p = nmea_buffer + 1; p < pStar; p++) ck ^= (unsigned char)(*p);
-                      char hex[3]; sprintf(hex, "%02X", ck);
-                      pStar[1] = hex[0]; pStar[2] = hex[1];
-                      pStar[3] = '\0';
+                    // Recalculate checksum since we modified the header
+                    uint8_t new_cksum = this->calculateChecksum(nmea_buffer);
+                    char *ck_ptr = strchr(nmea_buffer, '*');
+                    if (ck_ptr) {
+                      snprintf(ck_ptr + 1, 3, "%02X", new_cksum);
                     }
                   }
                 }
+                Serial.println(nmea_buffer);
+              }
+            }
 
-                // 5. Manual Manual DateTime Extraction (ATGM336H / ZDA Support)
-                // This ensures clock updates even if MicroNMEA library returns Year 0
-                if (strstr(nmea_buffer, "ZDA,") || strstr(nmea_buffer, "RMC,")) {
-                  LinkedList<String> fields = cli_obj.parseCommand(nmea_buffer, ",");
-                  if (strstr(nmea_buffer, "ZDA,") && fields.size() >= 5) {
-                    String time_f = fields.get(1); // HHMMSS.SS
-                    String day_f = fields.get(2);  // DD
-                    String month_f = fields.get(3); // MM
-                    String year_f = fields.get(4);  // YYYY
-                    if (year_f.toInt() > 2000) {
-                        this->last_time_str = time_f;
-                        this->last_date_str = day_f + month_f + year_f.substring(2);
-                        this->last_datetime_str = year_f + "-" + month_f + "-" + day_f + " " + 
-                                                   time_f.substring(0,2) + ":" + time_f.substring(2,4) + ":" + time_f.substring(4,6);
-                        this->time_synced = true;
-                    }
-                  } else if (strstr(nmea_buffer, "RMC,") && fields.size() >= 10) {
-                    String time_f = fields.get(1); // HHMMSS.SS
-                    String date_f = fields.get(9); // DDMMYY
-                    if (date_f.length() == 6 && date_f != "000000") {
-                        this->last_time_str = time_f;
-                        this->last_date_str = date_f;
-                        this->last_datetime_str = "20" + date_f.substring(4,6) + "-" + date_f.substring(2,4) + "-" + date_f.substring(0,2) + " " + 
-                                                   time_f.substring(0,2) + ":" + time_f.substring(2,4) + ":" + time_f.substring(4,6);
-                        this->time_synced = true;
-                    }
-                  }
-                }
+          } // End of normalization block
 
-                // 6. Echo NMEA to Serial (Only during active GPS scan/wardrive)
-                if ((wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA || wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_DATA) && nmea_buffer[0] == '$') {
-                    // Block noisy hardware messages
-                    if (strstr(nmea_buffer, "ANTENNA") || strstr(nmea_buffer, "OPEN") || strstr(nmea_buffer, "SHORT")) return;
+          // Sync UI variables (Moved outside normalization to ensure updates
+          // even for non-G/B talker IDs)
+          this->setGPSInfo();
 
-                    const char* dashboard_safe[] = {"GGA", "RMC", "GSV", "GSA", "GLL", "VTG", "ZDA"};
-                    bool safe = false;
-                    for (int s=0; s<7; s++) if (strstr(nmea_buffer, dashboard_safe[s])) safe = true;
-
-                    if (safe) {
-                        // TALKER ID OVERRIDE: Force output to match user-selected constellation
-                        if (this->type_flag != GPSTYPE_NATIVE && this->type_flag != GPSTYPE_ALL) {
-                            String custom_id = this->generateType();
-                            if (custom_id.length() >= 2) {
-                                nmea_buffer[1] = custom_id[0];
-                                nmea_buffer[2] = custom_id[1];
-                                
-                                // Recalculate checksum since we modified the header
-                                uint8_t new_cksum = this->calculateChecksum(nmea_buffer);
-                                char* ck_ptr = strchr(nmea_buffer, '*');
-                                if (ck_ptr) {
-                                    snprintf(ck_ptr + 1, 3, "%02X", new_cksum);
-                                }
-                            }
-                        }
-                        Serial.println(nmea_buffer);
-                    }
-                }
-
-                // Sync UI variables
-                this->setGPSInfo(); 
-              } // End of normalization block
-
-              buffer_pos = 0;
-            } // End of NMEA EOL block
-          } else {
-            buffer_pos = 0;
-          }
-        }
+          buffer_pos = 0;
+        } // End of NMEA EOL block
+      } else {
+        buffer_pos = 0;
       }
-    #endif
+    }
   }
+#endif
+}
 #endif
