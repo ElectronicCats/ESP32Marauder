@@ -347,8 +347,6 @@ class WiFiScan
     void broadcastCustomBeacon(uint32_t current_time, AccessPoint custom_ssid);
     void broadcastSetSSID(uint32_t current_time, const char* ESSID);
     void RunAPScan(uint8_t scan_mode, uint16_t color);
-    void RunGPSInfo();
-    void RunGPSNmea();
     void RunMimicFlood(uint8_t scan_mode, uint16_t color);
     void RunPwnScan(uint8_t scan_mode, uint16_t color);
     void RunBeaconScan(uint8_t scan_mode, uint16_t color);
@@ -429,6 +427,8 @@ class WiFiScan
     void channelHop();
     uint8_t currentScanMode = 0;
     void main(uint32_t currentTime);
+    void RunGPSInfo();
+    void RunGPSNmea();
     void StartScan(uint8_t scan_mode, uint16_t color = 0);
     void StopScan(uint8_t scan_mode);
     void setBaseMacAddress(uint8_t macAddr[6]);

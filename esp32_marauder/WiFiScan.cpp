@@ -1713,6 +1713,8 @@ void WiFiScan::RunGPSInfo() {
 
   Serial.println("Satellites: " + gps_obj.getNumSatsString());
   delay(5);
+  Serial.println("Sats in View: " + (String)gps_obj.getSatsInView());
+  delay(5);
   Serial.println("Accuracy: " + (String)gps_obj.getAccuracy());
   delay(5);
   Serial.println("Latitude: " + gps_obj.getLat());
@@ -5704,7 +5706,7 @@ void WiFiScan::main(uint32_t currentTime) {
 #endif
     }
   } else if (currentScanMode == WIFI_SCAN_GPS_DATA) {
-    if (currentTime - initTime >= 5000) {
+    if (currentTime - initTime >= 1000) { // Increased to 1Hz
       this->initTime = millis();
       this->RunGPSInfo();
     }
