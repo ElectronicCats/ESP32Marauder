@@ -1,20 +1,19 @@
 #include "CommandLine.h"
 
 #ifdef HAS_NFC
-  #include "NfcInterface.h"
+#include "NfcInterface.h"
 #endif
 
 #ifdef HAS_GPS
-  #include "GpsInterface.h"
-  #ifdef MARAUDER_FLIPPER_C5
-    #define GpsSerial Serial1
-  #endif
+#include "GpsInterface.h"
+#ifdef MARAUDER_FLIPPER_C5
+#define GpsSerial Serial1
+#endif
 #endif
 
 extern "C" int ets_printf(const char *fmt, ...);
 
-CommandLine::CommandLine() {
-}
+CommandLine::CommandLine() {}
 
 void CommandLine::RunSetup() {
   Serial.println(this->ascii_art);
@@ -24,7 +23,7 @@ void CommandLine::RunSetup() {
   Serial.println("            " + version_number + "\n");
   Serial.println(F("       By: justcallmekoko\n"));
   Serial.println(F("--------------------------------\n\n"));
-  
+
   Serial.print("> ");
 }
 
@@ -47,7 +46,7 @@ void CommandLine::main(uint32_t currentTime) {
     Serial.print("> ");
 }
 
-LinkedList<String> CommandLine::parseCommand(String input, char* delim) {
+LinkedList<String> CommandLine::parseCommand(String input, char *delim) {
   LinkedList<String> cmd_args;
 
   bool inQuote = false;
@@ -87,7 +86,7 @@ LinkedList<String> CommandLine::parseCommand(String input, char* delim) {
   return cmd_args;
 }
 
-int CommandLine::argSearch(LinkedList<String>* cmd_args_list, String key) {
+int CommandLine::argSearch(LinkedList<String> *cmd_args_list, String key) {
   for (int i = 0; i < cmd_args_list->size(); i++) {
     if (cmd_args_list->get(i) == key)
       return i;
@@ -96,10 +95,11 @@ int CommandLine::argSearch(LinkedList<String>* cmd_args_list, String key) {
   return -1;
 }
 
-bool CommandLine::checkValueExists(LinkedList<String>* cmd_args_list, int index) {
+bool CommandLine::checkValueExists(LinkedList<String> *cmd_args_list,
+                                   int index) {
   if (index < cmd_args_list->size() - 1)
     return true;
-    
+
   return false;
 }
 
@@ -126,11 +126,11 @@ bool CommandLine::hasSSIDs() {
 }
 
 void CommandLine::showCounts(int selected, int unselected) {
-  Serial.print((String) selected + " selected");
-  
-  if (unselected != -1) 
-    Serial.print(", " + (String) unselected + " unselected");
-  
+  Serial.print((String)selected + " selected");
+
+  if (unselected != -1)
+    Serial.print(", " + (String)unselected + " unselected");
+
   Serial.println("");
 }
 
@@ -138,7 +138,8 @@ String CommandLine::toLowerCase(String str) {
   String result = str;
   for (int i = 0; i < str.length(); i++) {
     int charValue = str.charAt(i);
-    if (charValue >= 65 && charValue <= 90) { // ASCII codes for uppercase letters
+    if (charValue >= 65 &&
+        charValue <= 90) { // ASCII codes for uppercase letters
       charValue += 32;
       result.setCharAt(i, char(charValue));
     }
@@ -168,8 +169,12 @@ void CommandLine::filterAccessPoints(String filter) {
       String f = toLowerCase(filters.get(j));
       if (f.substring(0, 7) == "equals ") {
         String ssidEquals = f.substring(7);
-        if ((ssidEquals.charAt(0) == '\"' && ssidEquals.charAt(ssidEquals.length() - 1) == '\"' && ssidEquals.length() > 1) ||
-            (ssidEquals.charAt(0) == '\'' && ssidEquals.charAt(ssidEquals.length() - 1) == '\'' && ssidEquals.length() > 1)) {
+        if ((ssidEquals.charAt(0) == '\"' &&
+             ssidEquals.charAt(ssidEquals.length() - 1) == '\"' &&
+             ssidEquals.length() > 1) ||
+            (ssidEquals.charAt(0) == '\'' &&
+             ssidEquals.charAt(ssidEquals.length() - 1) == '\'' &&
+             ssidEquals.length() > 1)) {
           ssidEquals = ssidEquals.substring(1, ssidEquals.length() - 1);
         }
         if (access_points->get(i).essid.equalsIgnoreCase(ssidEquals)) {
@@ -178,8 +183,12 @@ void CommandLine::filterAccessPoints(String filter) {
         }
       } else if (f.substring(0, 9) == "contains ") {
         String ssidContains = f.substring(9);
-        if ((ssidContains.charAt(0) == '\"' && ssidContains.charAt(ssidContains.length() - 1) == '\"' && ssidContains.length() > 1) ||
-            (ssidContains.charAt(0) == '\'' && ssidContains.charAt(ssidContains.length() - 1) == '\'' && ssidContains.length() > 1)) {
+        if ((ssidContains.charAt(0) == '\"' &&
+             ssidContains.charAt(ssidContains.length() - 1) == '\"' &&
+             ssidContains.length() > 1) ||
+            (ssidContains.charAt(0) == '\'' &&
+             ssidContains.charAt(ssidContains.length() - 1) == '\'' &&
+             ssidContains.length() > 1)) {
           ssidContains = ssidContains.substring(1, ssidContains.length() - 1);
         }
         String essid = toLowerCase(access_points->get(i).essid);
@@ -205,16 +214,18 @@ void CommandLine::filterAccessPoints(String filter) {
 }
 
 void CommandLine::runCommand(String input) {
-  if (input == "") return;
+  if (input == "")
+    return;
 
-  if(wifi_scan_obj.scanning() && wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA){
-    if(input != STOPSCAN_CMD) return;    
-  }
-  else
+  if (wifi_scan_obj.scanning() &&
+      wifi_scan_obj.currentScanMode == WIFI_SCAN_GPS_NMEA) {
+    if (input != STOPSCAN_CMD)
+      return;
+  } else
     Serial.println("#" + input);
 
   LinkedList<String> cmd_args = this->parseCommand(input, " ");
-  
+
   //// Admin commands
   // Help
   if (cmd_args.get(0) == HELP_CMD) {
