@@ -111,6 +111,7 @@ const char PROGMEM HELP_LED_CMD[] = "led -s <hex color>/-p <rainbow>";
 const char PROGMEM HELP_GPS_DATA_CMD[] = "gpsdata";
 const char PROGMEM HELP_GPS_CMD[] = "gps [-g] <fix/sat/lon/lat/alt/date/accuracy/text/nmea>\r\n    [-n] <native/all/gps/glonass/galileo/navic/qzss/beidou>\r\n         [-b = use BD vs GB for beidou]";
 const char PROGMEM HELP_NMEA_CMD[] = "nmea";
+const char PROGMEM HELP_GPSPOI_CMD[] = "gpspoi [-s/-m/-e]";
 const char PROGMEM HELP_SPIFFS_CMD[] = "spiffs [ls/read <file>/rm <file>/format]";
 const char PROGMEM HELP_INFO_CMD[] = "info";
 
@@ -155,7 +156,7 @@ const char PROGMEM HELP_BT_WARDRIVE_CMD[] = "btwardrive [-c]";
 const char PROGMEM HELP_BT_SKIM_CMD[] = "sniffskim";
 
 // NFC Command
-const char PROGMEM HELP_NFC_CMD[] = "nfc [scan/read] [-u <url>] [-t <text>] [-v <name,phone,email>]";
+const char PROGMEM HELP_NFC_CMD[] = "nfc [scan/read] [-u <url>] [-t <text>] [-v <name,phone,email>] [-w <ssid,pass,auth>]";
 
 const char PROGMEM HELP_FOOT[] = "==================================";
 

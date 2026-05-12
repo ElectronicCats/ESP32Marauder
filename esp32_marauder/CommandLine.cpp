@@ -236,14 +236,15 @@ void CommandLine::runCommand(String input) {
     Serial.println(HELP_REBOOT_CMD);
     Serial.println(HELP_UPDATE_CMD_A);
     Serial.println(HELP_LS_CMD);
-    #ifdef HAS_NEOPIXEL_LED
-      Serial.println(HELP_LED_CMD);
-    #endif
+#ifdef HAS_NEOPIXEL_LED
+    Serial.println(HELP_LED_CMD);
+#endif
     Serial.println(HELP_GPS_DATA_CMD);
     Serial.println(HELP_GPS_CMD);
     Serial.println(HELP_NMEA_CMD);
+    Serial.println(HELP_GPSPOI_CMD);
     Serial.println(HELP_INFO_CMD);
-    
+
     // WiFi sniff/scan
     Serial.println(HELP_EVIL_PORTAL_CMD);
     Serial.println(HELP_SIGSTREN_CMD);
@@ -301,160 +302,160 @@ void CommandLine::runCommand(String input) {
 
   // Stop Scan
   if (cmd_args.get(0) == STOPSCAN_CMD) {
-    //if (wifi_scan_obj.currentScanMode == OTA_UPDATE) {
-    //  wifi_scan_obj.currentScanMode = WIFI_SCAN_OFF;
-      //#ifdef HAS_SCREEN
-      //  menu_function_obj.changeMenu(menu_function_obj.updateMenu.parentMenu);
-      //#endif
+    // if (wifi_scan_obj.currentScanMode == OTA_UPDATE) {
+    //   wifi_scan_obj.currentScanMode = WIFI_SCAN_OFF;
+    // #ifdef HAS_SCREEN
+    //   menu_function_obj.changeMenu(menu_function_obj.updateMenu.parentMenu);
+    // #endif
     //  WiFi.softAPdisconnect(true);
     //  web_obj.shutdownServer();
     //  return;
     //}
-    
-    uint8_t old_scan_mode=wifi_scan_obj.currentScanMode;
+
+    uint8_t old_scan_mode = wifi_scan_obj.currentScanMode;
 
     wifi_scan_obj.StartScan(WIFI_SCAN_OFF);
 
-    if(old_scan_mode == WIFI_SCAN_GPS_NMEA)
+    if (old_scan_mode == WIFI_SCAN_GPS_NMEA)
       Serial.println("END OF NMEA STREAM");
-    else if(old_scan_mode == WIFI_SCAN_GPS_DATA)
+    else if (old_scan_mode == WIFI_SCAN_GPS_DATA)
       Serial.println("Stopping GPS data updates");
     else
       Serial.println("Stopping WiFi tran/recv");
 
-    // If we don't do this, the text and button coordinates will be off
-    #ifdef HAS_SCREEN
-      display_obj.tft.init();
-      menu_function_obj.changeMenu(menu_function_obj.current_menu);
-    #endif
-  }
-  else if (cmd_args.get(0) == GPS_DATA_CMD) {
-    #ifdef HAS_GPS
-      if (gps_obj.getGpsModuleStatus()) {
-        Serial.println("Getting GPS Data. Stop with " + (String)STOPSCAN_CMD);
-        wifi_scan_obj.currentScanMode = WIFI_SCAN_GPS_DATA;
-        #ifdef HAS_SCREEN
-          menu_function_obj.changeMenu(&menu_function_obj.gpsInfoMenu);
-        #endif
+// If we don't do this, the text and button coordinates will be off
+#ifdef HAS_SCREEN
+    display_obj.tft.init();
+    menu_function_obj.changeMenu(menu_function_obj.current_menu);
+#endif
+  } else if (cmd_args.get(0) == GPS_DATA_CMD) {
+#ifdef HAS_GPS
+    if (gps_obj.getGpsModuleStatus()) {
+      Serial.println("Getting GPS Data. Stop with " + (String)STOPSCAN_CMD);
+      wifi_scan_obj.currentScanMode = WIFI_SCAN_GPS_DATA;
+#ifdef HAS_SCREEN
+      menu_function_obj.changeMenu(&menu_function_obj.gpsInfoMenu);
+#endif
         wifi_scan_obj.StartScan(WIFI_SCAN_GPS_DATA, TFT_CYAN);
-      }
-    #endif
-  }
-  else if (cmd_args.get(0) == GPS_CMD) {
-    #ifdef HAS_GPS
-      if (gps_obj.getGpsModuleStatus()) {
-        int get_arg = this->argSearch(&cmd_args, "-g");
-        int nmea_arg = this->argSearch(&cmd_args, "-n");
+        wifi_scan_obj.RunGPSInfo();
+    } else {
+      Serial.println("Error: GPS Module not detected or disabled.");
+    }
+#endif
+  } else if (cmd_args.get(0) == GPS_CMD) {
+#ifdef HAS_GPS
+    if (gps_obj.getGpsModuleStatus()) {
+      int get_arg = this->argSearch(&cmd_args, "-g");
+      int nmea_arg = this->argSearch(&cmd_args, "-n");
 
-        if (get_arg != -1) {
-          String gps_info = cmd_args.get(get_arg + 1);
+      if (get_arg != -1) {
+        String gps_info = cmd_args.get(get_arg + 1);
 
-          if (gps_info == "fix")
-            Serial.println("Fix: " + gps_obj.getFixStatusAsString());
-          else if (gps_info == "sat")
-            Serial.println("Sats: " + gps_obj.getNumSatsString());
-          else if (gps_info == "lat")
-            Serial.println("Lat: " + gps_obj.getLat());
-          else if (gps_info == "lon")
-            Serial.println("Lon: " + gps_obj.getLon());
-          else if (gps_info == "alt")
-            Serial.println("Alt: " + (String)gps_obj.getAlt());
-          else if (gps_info == "accuracy")
-            Serial.println("Accuracy: " + (String)gps_obj.getAccuracy());
-          else if (gps_info == "date")
-            Serial.println("Date/Time: " + gps_obj.getDatetime());
-          else if (gps_info == "text"){
-            Serial.println(gps_obj.getText());
-          }
-          else if (gps_info == "nmea"){
-            int notparsed_arg = this->argSearch(&cmd_args, "-p");
-            int notimp_arg = this->argSearch(&cmd_args, "-i");
-            int recd_arg = this->argSearch(&cmd_args, "-r");
-            if(notparsed_arg == -1 && notimp_arg == -1 && recd_arg == -1){
-              gps_obj.sendSentence(Serial, gps_obj.generateGXgga().c_str());
-              gps_obj.sendSentence(Serial, gps_obj.generateGXrmc().c_str());
-            }
-            else if(notparsed_arg == -1 && notimp_arg == -1)
-              Serial.println(gps_obj.getNmea());
-            else if(notparsed_arg == -1)
-              Serial.println(gps_obj.getNmeaNotimp());
-            else
-              Serial.println(gps_obj.getNmeaNotparsed());
-          }
+        if (gps_info == "fix")
+          Serial.println("Fix: " + gps_obj.getFixStatusAsString());
+        else if (gps_info == "sat")
+          Serial.println("Sats: " + gps_obj.getNumSatsString());
+        else if (gps_info == "lat")
+          Serial.println("Lat: " + gps_obj.getLat());
+        else if (gps_info == "lon")
+          Serial.println("Lon: " + gps_obj.getLon());
+        else if (gps_info == "alt")
+          Serial.println("Alt: " + (String)gps_obj.getAlt());
+        else if (gps_info == "accuracy")
+          Serial.println("Accuracy: " + (String)gps_obj.getAccuracy());
+        else if (gps_info == "date")
+          Serial.println("Date/Time: " + gps_obj.getDatetime());
+        else if (gps_info == "text") {
+          Serial.println(gps_obj.getText());
+        } else if (gps_info == "nmea") {
+          int notparsed_arg = this->argSearch(&cmd_args, "-p");
+          int notimp_arg = this->argSearch(&cmd_args, "-i");
+          int recd_arg = this->argSearch(&cmd_args, "-r");
+          if (notparsed_arg == -1 && notimp_arg == -1 && recd_arg == -1) {
+            gps_obj.sendSentence(Serial, gps_obj.generateGXgga().c_str());
+            gps_obj.sendSentence(Serial, gps_obj.generateGXrmc().c_str());
+          } else if (notparsed_arg == -1 && notimp_arg == -1)
+            Serial.println(gps_obj.getNmea());
+          else if (notparsed_arg == -1)
+            Serial.println(gps_obj.getNmeaNotimp());
           else
-            Serial.println("You did not provide a valid argument");
-        }
-        else if(nmea_arg != -1){
-          String nmea_type = cmd_args.get(nmea_arg + 1);
+            Serial.println(gps_obj.getNmeaNotparsed());
+        } else
+          Serial.println("You did not provide a valid argument");
+      } else if (nmea_arg != -1) {
+        String nmea_type = cmd_args.get(nmea_arg + 1);
 
-          if (nmea_type == "native" || nmea_type == "all" || nmea_type == "gps" || nmea_type == "glonass"
-              || nmea_type == "galileo" || nmea_type == "navic" || nmea_type == "qzss" || nmea_type == "beidou"){
-            if(nmea_type == "beidou"){
-              int beidou_bd_arg = this->argSearch(&cmd_args, "-b");
-              if(beidou_bd_arg != -1)
-                nmea_type="beidou_bd";
-            }
-            gps_obj.setType(nmea_type);
-            gps_obj.setConfigConstellation(nmea_type);
-            Serial.println("GPS Output Type Set To: " + nmea_type);
+        if (nmea_type == "native" || nmea_type == "all" || nmea_type == "gps" ||
+            nmea_type == "glonass" || nmea_type == "galileo" ||
+            nmea_type == "navic" || nmea_type == "qzss" ||
+            nmea_type == "beidou") {
+          if (nmea_type == "beidou") {
+            int beidou_bd_arg = this->argSearch(&cmd_args, "-b");
+            if (beidou_bd_arg != -1)
+              nmea_type = "beidou_bd";
           }
-          else
-            Serial.println("You did not provide a valid argument");
-        }
-        else if(cmd_args.size()>1)
-          Serial.println("You did not provide a valid flag");
-        else
-          Serial.println("You did not provide an argument");
-      }
-    #endif
-  }
-  else if (cmd_args.get(0) == NMEA_CMD) {
-    #ifdef HAS_GPS
-      if (gps_obj.getGpsModuleStatus()) {
-        #ifdef HAS_SCREEN
-          menu_function_obj.changeMenu(&menu_function_obj.gpsInfoMenu);
-        #endif
-        Serial.println("NMEA STREAM FOLLOWS");
-        wifi_scan_obj.currentScanMode = WIFI_SCAN_GPS_NMEA;
-        wifi_scan_obj.StartScan(WIFI_SCAN_GPS_NMEA, TFT_CYAN);
-      }
-    #endif
-  }
-  else if (cmd_args.get(0) == "gpspoi") {
-    #ifdef HAS_GPS
-      int s_arg = this->argSearch(&cmd_args, "-s");
-      int m_arg = this->argSearch(&cmd_args, "-m");
-      int e_arg = this->argSearch(&cmd_args, "-e");
+          gps_obj.setType(nmea_type);
+          gps_obj.setConfigConstellation(nmea_type);
+          Serial.println("GPS Output Type Set To: " + nmea_type);
+        } else
+          Serial.println("You did not provide a valid argument");
+      } else if (cmd_args.size() > 1)
+        Serial.println("You did not provide a valid flag");
+      else
+        Serial.println("You did not provide an argument");
+    }
+#endif
+  } else if (cmd_args.get(0) == NMEA_CMD) {
+#ifdef HAS_GPS
+    if (gps_obj.getGpsModuleStatus()) {
+#ifdef HAS_SCREEN
+      menu_function_obj.changeMenu(&menu_function_obj.gpsInfoMenu);
+#endif
+      Serial.println("NMEA STREAM FOLLOWS");
+      wifi_scan_obj.currentScanMode = WIFI_SCAN_GPS_NMEA;
+      wifi_scan_obj.StartScan(WIFI_SCAN_GPS_NMEA, TFT_CYAN);
+    }
+#endif
+  } else if (cmd_args.get(0) == "gpspoi") {
+#ifdef HAS_GPS
+    int s_arg = this->argSearch(&cmd_args, "-s");
+    int m_arg = this->argSearch(&cmd_args, "-m");
+    int e_arg = this->argSearch(&cmd_args, "-e");
 
-      if (s_arg != -1) gps_obj.logPOI("Route Started");
-      else if (m_arg != -1) gps_obj.logPOI("Mark");
-      else if (e_arg != -1) gps_obj.logPOI("Route Ended");
-      else Serial.println("Missing flag (-s, -m, -e)");
-    #else
-      Serial.println("GPS Not Supported");
-    #endif
+    if (s_arg != -1)
+      gps_obj.logPOI("Route Started");
+    else if (m_arg != -1)
+      gps_obj.logPOI("Mark");
+    else if (e_arg != -1)
+      gps_obj.logPOI("Route Ended");
+    else
+      Serial.println("Missing flag (-s, -m, -e)");
+#else
+    Serial.println("GPS Not Supported");
+#endif
   }
   // info command
   else if (cmd_args.get(0) == INFO_CMD) {
     Serial.println("Version: " + version_number);
     Serial.println("Board: " + board_target);
     String features = "Features: ";
-    #ifdef HAS_BT
-      features += "BT,";
-    #endif
-    #ifdef HAS_NFC
-      features += "NFC,";
-    #endif
-    #ifdef HAS_GPS
-      features += "GPS,";
-    #endif
-    #ifdef HAS_NEOPIXEL_LED
-      features += "LED,";
-    #endif
-    #ifdef HAS_SD
-      features += "SD,";
-    #endif
-    if (features.endsWith(",")) features.remove(features.length() - 1);
+#ifdef HAS_BT
+    features += "BT,";
+#endif
+#ifdef HAS_NFC
+    features += "NFC,";
+#endif
+#ifdef HAS_GPS
+    features += "GPS,";
+#endif
+#ifdef HAS_NEOPIXEL_LED
+    features += "LED,";
+#endif
+#ifdef HAS_SD
+    features += "SD,";
+#endif
+    if (features.endsWith(","))
+      features.remove(features.length() - 1);
     Serial.println(features);
   }
 
@@ -697,58 +698,60 @@ void CommandLine::runCommand(String input) {
       int html_sw = this->argSearch(&cmd_args, "-w");
 
       String et_command = "";
-      if (cmd_sw != -1) et_command = cmd_args.get(cmd_sw + 1);
-      else if (html_sw != -1) et_command = "start"; // Auto-start if only -w is provided
+      if (cmd_sw != -1)
+        et_command = cmd_args.get(cmd_sw + 1);
+      else if (html_sw != -1)
+        et_command = "start"; // Auto-start if only -w is provided
 
       if (et_command == "start") {
-        Serial.println("Starting Evil Portal. Stop with " + (String)STOPSCAN_CMD);
-        #ifdef HAS_SCREEN
-          display_obj.clearScreen();
-          menu_function_obj.drawStatusBar();
-        #endif
+        Serial.println("Starting Evil Portal. Stop with " +
+                       (String)STOPSCAN_CMD);
+#ifdef HAS_SCREEN
+        display_obj.clearScreen();
+        menu_function_obj.drawStatusBar();
+#endif
         if (html_sw != -1) {
           String target_html_name = cmd_args.get(html_sw + 1);
           evil_portal_obj.target_html_name = target_html_name;
           evil_portal_obj.using_serial_html = false;
-          Serial.println("Set html file as " + evil_portal_obj.target_html_name);
+          Serial.println("Set html file as " +
+                         evil_portal_obj.target_html_name);
         }
         wifi_scan_obj.StartScan(WIFI_SCAN_EVIL_PORTAL, TFT_MAGENTA);
-      }
-      else if (et_command == "sethtml") {
+      } else if (et_command == "sethtml") {
         if (cmd_args.size() > (cmd_sw + 2)) {
           String target_html_name = cmd_args.get(cmd_sw + 2);
           evil_portal_obj.target_html_name = target_html_name;
           evil_portal_obj.using_serial_html = false;
-          Serial.println("Set html file as " + evil_portal_obj.target_html_name);
+          Serial.println("Set html file as " +
+                         evil_portal_obj.target_html_name);
         }
-      }
-      else if (et_command == "sethtmlstr") {
+      } else if (et_command == "sethtmlstr") {
         evil_portal_obj.setHtmlFromSerial();
       }
-    }
-    else if (cmd_args.get(0) == SCANAP_CMD) {
+    } else if (cmd_args.get(0) == SCANAP_CMD) {
       int full_sw = -1;
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
+#ifdef HAS_SCREEN
+      display_obj.clearScreen();
+      menu_function_obj.drawStatusBar();
+#endif
 
       if (full_sw == -1) {
         Serial.println("Starting AP scan. Stop with " + (String)STOPSCAN_CMD);
         wifi_scan_obj.StartScan(WIFI_SCAN_TARGET_AP, TFT_MAGENTA);
-      }
-      else {
-        Serial.println("Starting Full AP scan. Stop with " + (String)STOPSCAN_CMD);
+      } else {
+        Serial.println("Starting Full AP scan. Stop with " +
+                       (String)STOPSCAN_CMD);
         wifi_scan_obj.StartScan(WIFI_SCAN_TARGET_AP_FULL, TFT_MAGENTA);
       }
     }
     // Raw sniff
     else if (cmd_args.get(0) == SNIFF_RAW_CMD) {
       Serial.println("Starting Raw sniff. Stop with " + (String)STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
+#ifdef HAS_SCREEN
+      display_obj.clearScreen();
+      menu_function_obj.drawStatusBar();
+#endif
       wifi_scan_obj.StartScan(WIFI_SCAN_RAW_CAPTURE, TFT_WHITE);
     }
     // Scan alias support
@@ -1164,25 +1167,21 @@ void CommandLine::runCommand(String input) {
 
       if (scan_sw != -1) {
         nfc_obj.deep_scan(); // Perform brute force pin discovery
-      }
-      else if (read_sw != -1) {
+      } else if (read_sw != -1) {
         nfc_obj.read_tag_content();
-      }
-      else if (u_sw != -1 && u_sw + 1 < cmd_args.size()) {
+      } else if (u_sw != -1 && u_sw + 1 < cmd_args.size()) {
         String url = cmd_args.get(u_sw + 1);
         if (nfc_obj.write_ndef_uri(url.c_str()))
           Serial.println("NFC_WRITE_SUCCESS: URI");
         else
           Serial.println("NFC_WRITE_ERROR: URI");
-      }
-      else if (t_sw != -1 && t_sw + 1 < cmd_args.size()) {
+      } else if (t_sw != -1 && t_sw + 1 < cmd_args.size()) {
         String text = cmd_args.get(t_sw + 1);
         if (nfc_obj.write_ndef_text(text.c_str()))
           Serial.println("NFC_WRITE_SUCCESS: TEXT");
         else
           Serial.println("NFC_WRITE_ERROR: TEXT");
-      }
-      else if (v_sw != -1 && v_sw + 1 < cmd_args.size()) {
+      } else if (v_sw != -1 && v_sw + 1 < cmd_args.size()) {
         String vcard = cmd_args.get(v_sw + 1);
         int comma1 = vcard.indexOf(',');
         int comma2 = vcard.indexOf(',', comma1 + 1);
@@ -1190,15 +1189,15 @@ void CommandLine::runCommand(String input) {
           String name = vcard.substring(0, comma1);
           String phone = vcard.substring(comma1 + 1, comma2);
           String email = vcard.substring(comma2 + 1);
-          if (nfc_obj.write_ndef_vcard(name.c_str(), phone.c_str(), email.c_str()))
+          if (nfc_obj.write_ndef_vcard(name.c_str(), phone.c_str(),
+                                       email.c_str()))
             Serial.println("NFC_WRITE_SUCCESS: VCARD");
           else
             Serial.println("NFC_WRITE_ERROR: VCARD");
         } else {
           Serial.println("Invalid vCard format. Use <name,phone,email>");
         }
-      }
-      else if (w_sw != -1 && w_sw + 1 < cmd_args.size()) {
+      } else if (w_sw != -1 && w_sw + 1 < cmd_args.size()) {
         String wifi = cmd_args.get(w_sw + 1);
         int comma1 = wifi.indexOf(',');
         int comma2 = wifi.indexOf(',', comma1 + 1);
