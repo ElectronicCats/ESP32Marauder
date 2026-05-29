@@ -227,6 +227,9 @@ Este es un proyecto de hardware abierto. Las contribuciones son bienvenidas:
 4. Haz push a tu rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
+##El comando para flasheear tu placa con el binario del RELEASE 
+** esptool.py --chip esp32c5 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 firmware.bin **
+
 ## 📝 Licencia
 
 Este proyecto es de hardware abierto. Consulta los archivos de licencia para más detalles.
@@ -256,6 +259,8 @@ Gracias a toda la comunidad de hardware abierto y a todas las personas que hacen
 - **Hardware & Support**: [Electronic Cats](https://electroniccats.com) 😼
 - **Original Firmware**: [justcallmekoko](https://github.com/justcallmekoko)
 - **UI Maintenance**: [michelangelomo](https://github.com/michelangelomo) & [Mikystars](https://github.com/Mikystars)
+
+
 
 ---
 *Developed for the Offensive Security community.* 💀
