@@ -227,7 +227,7 @@ Este es un proyecto de hardware abierto. Las contribuciones son bienvenidas:
 4. Haz push a tu rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
-##El comando para flasheear tu placa con el binario del RELEASE 
+##El comando para flasheear tu placa con el binario del RELEASE   
 ** esptool.py --chip esp32c5 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 firmware.bin **
 
 ## 📝 Licencia
