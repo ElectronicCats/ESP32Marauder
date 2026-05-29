@@ -710,6 +710,9 @@ void GpsInterface::setGPSInfo() {
   // Update Satellite Count (Use higher value between "In Use" and "In View"
   // Persistence)
   int in_use = nmea.getNumSatellites();
+  if (in_use > 0) {
+    this->last_sats_viewed = in_use;
+  }
   this->num_sats = (in_use > 0) ? in_use : this->last_sats_viewed;
 
   // Update Fix Status (Match UI definition: requires positional lock)
@@ -910,9 +913,6 @@ void GpsInterface::main() {
         buffer_pos = 0;
       }
 
-      // 1. Feed EVERY character to the parser immediately
-      nmea.process(c);
-
       if (buffer_pos < sizeof(nmea_buffer) - 1) {
         nmea_buffer[buffer_pos++] = c;
         nmea_buffer[buffer_pos] = '\0';
@@ -1054,7 +1054,15 @@ void GpsInterface::main() {
                       (commas == 2 && strstr(nmea_buffer, "RMC,")) ||
                       (commas == 6 && strstr(nmea_buffer, "GLL,"));
                   if (is_fix_f && h_pos < 250) {
-                    bool good = (this->coords_synced || nmea.isValid());
+                    char incoming_val = nmea_buffer[i + 1];
+                    bool incoming_good = false;
+                    if (strstr(nmea_buffer, "GGA,")) {
+                      incoming_good = (incoming_val >= '1' && incoming_val <= '5');
+                    } else if (strstr(nmea_buffer, "RMC,") || strstr(nmea_buffer, "GLL,")) {
+                      incoming_good = (incoming_val == 'A');
+                    }
+
+                    bool good = (incoming_good || this->coords_synced || nmea.isValid());
                     if (strstr(nmea_buffer, "GGA,"))
                       hijacked[h_pos++] = good ? '1' : '0';
                     else if (strstr(nmea_buffer, "RMC,"))
@@ -1074,12 +1082,30 @@ void GpsInterface::main() {
                       (commas == 7 && strstr(nmea_buffer, "GGA,")) ||
                       (commas == 3 && strstr(nmea_buffer, "GSV,"));
                   if (is_sat_f && h_pos < 248) {
-                    int s_view =
-                        (this->sats_in_view > (int)nmea.getNumSatellites())
-                            ? this->sats_in_view
-                            : (int)nmea.getNumSatellites();
-                    if (s_view == 0)
-                      s_view = this->last_sats_viewed;
+                    int incoming_sats = 0;
+                    char temp_buf[4] = {0};
+                    int temp_idx = 0;
+                    int temp_i = i;
+                    while (nmea_buffer[temp_i + 1] != ',' &&
+                           nmea_buffer[temp_i + 1] != '*' &&
+                           nmea_buffer[temp_i + 1] != '\0' &&
+                           temp_idx < 3) {
+                      temp_buf[temp_idx++] = nmea_buffer[temp_i + 1];
+                      temp_i++;
+                    }
+                    if (temp_idx > 0) {
+                      incoming_sats = atoi(temp_buf);
+                    }
+
+                    int s_view = incoming_sats;
+                    if (s_view == 0) {
+                      s_view = (this->sats_in_view > (int)nmea.getNumSatellites())
+                                  ? this->sats_in_view
+                                  : (int)nmea.getNumSatellites();
+                      if (s_view == 0)
+                        s_view = this->last_sats_viewed;
+                    }
+
                     char s_str[4];
                     snprintf(s_str, 4, "%02d", s_view);
                     hijacked[h_pos++] = s_str[0];
@@ -1186,15 +1212,15 @@ void GpsInterface::main() {
                   sprintf(hex, "%02X", ck);
                   pStar[1] = hex[0];
                   pStar[2] = hex[1];
-                  pStar[3] = '\0';
+                  pStar[3] = '\r';
+                  pStar[4] = '\n';
+                  pStar[5] = '\0';
                 }
               }
             }
 
-            // 5. Manual Manual DateTime Extraction (ATGM336H / ZDA Support)
-            // This ensures clock updates even if MicroNMEA library returns Year
-            // 0
-            if (strstr(nmea_buffer, "ZDA,") || strstr(nmea_buffer, "RMC,")) {
+            // 5. Manual Manual DateTime & Satellite Extraction (ATGM336H / ZDA / GSV Support)
+            if (strstr(nmea_buffer, "ZDA,") || strstr(nmea_buffer, "RMC,") || strstr(nmea_buffer, "GSV,")) {
               LinkedList<String> fields =
                   cli_obj.parseCommand(nmea_buffer, ",");
               if (strstr(nmea_buffer, "ZDA,") && fields.size() >= 5) {
@@ -1223,6 +1249,12 @@ void GpsInterface::main() {
                       " " + time_f.substring(0, 2) + ":" +
                       time_f.substring(2, 4) + ":" + time_f.substring(4, 6);
                   this->time_synced = true;
+                }
+              } else if (strstr(nmea_buffer, "GSV,") && fields.size() >= 4) {
+                int view = fields.get(3).toInt();
+                if (view > 0) {
+                  this->sats_in_view = view;
+                  this->last_sats_viewed = view;
                 }
               }
             }
@@ -1258,7 +1290,10 @@ void GpsInterface::main() {
                     uint8_t new_cksum = this->calculateChecksum(nmea_buffer);
                     char *ck_ptr = strchr(nmea_buffer, '*');
                     if (ck_ptr) {
-                      snprintf(ck_ptr + 1, 3, "%02X", new_cksum);
+                      char hex[3];
+                      snprintf(hex, sizeof(hex), "%02X", new_cksum);
+                      ck_ptr[1] = hex[0];
+                      ck_ptr[2] = hex[1];
                     }
                   }
                 }
@@ -1267,6 +1302,11 @@ void GpsInterface::main() {
             }
 
           } // End of normalization block
+
+          // Feed the normalized, repaired sentence to MicroNMEA
+          for (int i = 0; i < (int)strlen(nmea_buffer); i++) {
+            nmea.process(nmea_buffer[i]);
+          }
 
           // Sync UI variables (Moved outside normalization to ensure updates
           // even for non-G/B talker IDs)
