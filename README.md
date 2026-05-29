@@ -209,5 +209,53 @@ Al realizar escaneos de alta intensidad (como Bluetooth Wardriving), la radio pu
 *   **El Dashboard no carga**: Verifica que ejecutaste `npm install` correctamente y que no hay errores en la terminal.
 
 ---
-**Desarrollado para la comunidad de Seguridad Ofensiva.** 💀  
-**created by ElectronicCats** 😼
+---
+
+## 📖 Documentación Adicional
+
+- [Marauder App](https://github.com/ElectronicCats/marauder-ui-android-app)
+- [Marauder UI Pro](https://github.com/ElectronicCats/marauder-ui-pro)
+- [Hardware Esquematico](https://github.com/ElectronicCats/badge-pwnterrey-2026)
+
+## 🤝 Contribuciones
+
+Este es un proyecto de hardware abierto. Las contribuciones son bienvenidas:
+
+1. Haz un fork del repositorio.
+2. Crea una nueva rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Haz commit de tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Haz push a tu rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+## 📝 Licencia
+
+Este proyecto es de hardware abierto. Consulta los archivos de licencia para más detalles.
+
+## 🏢 Electronic Cats
+
+Desarollado con ❤️ por [Electronic Cats](https://www.electroniccats.com/)
+
+<a href="https://github.com/sponsors/ElectronicCats">
+<img src="https://electroniccats.com/wp-content/uploads/2020/07/Badge_GHS.png" height="104" />
+</a>
+
+Electronic Cats invierte tiempo y recursos en proporcionar este diseño de hardware abierto.
+Por favor, apoya a Electronic Cats y al hardware abierto comprando productos de Electronic Cats.
+
+## 📞 Contacto y soporte 
+
+- **Website**: [https://www.electroniccats.com/](https://www.electroniccats.com/)
+- **GitHub**: [ElectronicCats](https://github.com/ElectronicCats)
+- **Issues**: Usa la sección de Issues en GitHub para reportar problemas o sugerir mejoras
+
+## 🙏 Agradecimientos
+
+Gracias a toda la comunidad de hardware abierto y a todas las personas que hacen posibles proyectos como este.
+
+## 🤝 Credits & Ecosystem
+- **Hardware & Support**: [Electronic Cats](https://electroniccats.com) 😼
+- **Original Firmware**: [justcallmekoko](https://github.com/justcallmekoko)
+- **UI Maintenance**: [michelangelomo](https://github.com/michelangelomo) & [Mikystars](https://github.com/Mikystars)
+
+---
+*Developed for the Offensive Security community.* 💀
